@@ -320,7 +320,8 @@ else:
         with cc1:
             st.metric("Confidence", f"{conf:.2f}", label.upper())
         with cc2:
-            st.metric("Mode", "LLM" if result["used_llm"] else "Template")
+            provider = (rec.provider or "template").capitalize()
+            st.metric("Mode", provider if result["used_llm"] else "Template")
         with cc3:
             st.metric("Slots kept", f"{len(result['kept'])} / {len(result['kept']) + len(result['dropped'])}")
 

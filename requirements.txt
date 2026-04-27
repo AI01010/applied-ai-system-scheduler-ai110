@@ -1,8 +1,12 @@
 streamlit>=1.30
 pytest>=7.0
 
-# RAG stack — all local except Anthropic
+# RAG stack — embeddings and vector store are 100% local
 chromadb>=0.4.22
 sentence-transformers>=2.5.0
-anthropic>=0.39.0
 python-dotenv>=1.0.0
+
+# LLM providers — both optional, system falls back to a deterministic template
+# if none are available. Gemini has a free tier; recommended.
+google-generativeai>=0.7.0
+anthropic>=0.39.0

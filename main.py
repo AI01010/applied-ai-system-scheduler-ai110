@@ -66,7 +66,7 @@ def main() -> None:
         section(f"4. AI recommendations for {pet.name} the {pet.species}")
         rec = engine.generate(owner, pet, k=5)
 
-        print(f"  used_llm:       {rec.used_llm}")
+        print(f"  provider:       {rec.provider}  (used_llm={rec.used_llm})")
         print(f"  retrieval avg:  {rec.confidence:.3f}")
         print(f"  citations:      {rec.citations[:3]}{'...' if len(rec.citations) > 3 else ''}")
         print(f"  explanation:    {rec.explanation[:100]}{'...' if len(rec.explanation) > 100 else ''}")

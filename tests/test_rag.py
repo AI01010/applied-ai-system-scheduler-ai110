@@ -20,6 +20,7 @@ from rag.rag_engine import (
     _build_user_prompt,
     _fallback_template,
     _scrub_medical_claims,
+    _strip_json_fence,
 )
 from rag.vector_store import _chunk_text, _parse_frontmatter
 
@@ -115,6 +116,17 @@ def test_scrub_medical_claims_passes_clean_text():
 # ── prompt construction ──────────────────────────────────────────────────────
 
 
+def test_strip_json_fence_removes_markdown_fences():
+    raw = "```json\n{\"a\": 1}\n```"
+    assert _strip_json_fence(raw) == '{"a": 1}'
+
+    raw_plain = "```\n{\"a\": 1}\n```"
+    assert _strip_json_fence(raw_plain) == '{"a": 1}'
+
+    # No fence — should be untouched (other than .strip())
+    assert _strip_json_fence('  {"a": 1}  ') == '{"a": 1}'
+
+
 def test_build_user_prompt_embeds_context():
     hits = [
         {"text": "High-energy dogs need 60+ min daily.", "source": "dog_high_energy.md", "score": 0.81},
@@ -160,6 +172,7 @@ def test_recommendation_default_fields():
     assert rec.citations == []
     assert rec.confidence == 0.0
     assert rec.used_llm is False
+    assert rec.provider == "template"
     assert rec.retrieval_hits == []
 
 

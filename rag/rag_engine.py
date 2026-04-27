@@ -2,16 +2,16 @@
 
 The engine takes an ``Owner`` and a target ``Pet``, builds a natural-language query,
 retrieves the top-K most relevant knowledge-base chunks via :class:`ChromaStore`,
-then either:
+then tries each LLM provider in order until one succeeds:
 
-* calls Anthropic Claude with the chunks as ``<context>`` and asks for a JSON
-  schedule (the "RAG path"), or
-* falls back to a deterministic template that emits a sensible default schedule
-  for the pet's species + energy level (when no API key is set or the LLM call
-  fails).
+1. **Google Gemini** (free tier — recommended). Uses ``GEMINI_API_KEY`` or
+   ``GOOGLE_API_KEY``.
+2. **Anthropic Claude** (paid). Uses ``ANTHROPIC_API_KEY``.
+3. **Deterministic template fallback** — emits a sensible default schedule for
+   the pet's species + energy level when no key is set or all LLM calls fail.
 
 Either path produces a :class:`Recommendation` carrying proposed tasks,
-explanation, citations, confidence, and a flag indicating which path was used.
+explanation, citations, confidence, and metadata indicating which path was used.
 Every call appends a structured JSON line to ``logs/rag.log`` for auditability.
 """
 
@@ -41,7 +41,11 @@ _MEDICAL_DENY_PATTERNS = [
 ]
 
 _LOG_PATH = Path("./logs/rag.log")
-_DEFAULT_MODEL = "claude-sonnet-4-6"
+
+# Default models for each provider. Gemini's free tier covers gemini-2.0-flash
+# (and 1.5-flash) with generous quotas; Anthropic's API is paid.
+_DEFAULT_GEMINI_MODEL = "gemini-2.0-flash"
+_DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6"
 
 
 # ── Recommendation dataclass ──────────────────────────────────────────────────
@@ -56,6 +60,7 @@ class Recommendation:
     citations: List[str] = field(default_factory=list)
     confidence: float = 0.0
     used_llm: bool = False
+    provider: str = "template"   # "gemini" | "anthropic" | "template"
     retrieval_hits: List[dict] = field(default_factory=list)
 
 
@@ -124,6 +129,51 @@ def _build_user_prompt(query: str, hits: List[dict]) -> str:
     )
 
 
+def _strip_json_fence(raw: str) -> str:
+    """Strip leading/trailing markdown code fences models sometimes add."""
+    raw = raw.strip()
+    raw = re.sub(r"^```(?:json)?\s*", "", raw)
+    raw = re.sub(r"\s*```\s*$", "", raw)
+    return raw
+
+
+def _call_gemini(query: str, hits: List[dict], model: str) -> Optional[dict]:
+    """Call Gemini. Return parsed JSON dict, or None on any failure.
+
+    Uses ``GEMINI_API_KEY`` (preferred) or ``GOOGLE_API_KEY`` (alias). Free-tier
+    models like ``gemini-2.0-flash`` work without billing setup.
+    """
+    api_key = (
+        os.environ.get("GEMINI_API_KEY", "").strip()
+        or os.environ.get("GOOGLE_API_KEY", "").strip()
+    )
+    if not api_key:
+        return None
+    try:
+        # Lazy import — keep the module importable without the SDK installed.
+        import google.generativeai as genai  # type: ignore
+
+        genai.configure(api_key=api_key)
+        # Gemini's "system_instruction" is the equivalent of Anthropic's `system` arg.
+        model_obj = genai.GenerativeModel(
+            model_name=model,
+            system_instruction=_SYSTEM_PROMPT,
+            generation_config={
+                "temperature": 0.4,
+                "max_output_tokens": 1500,
+                "response_mime_type": "application/json",
+            },
+        )
+        response = model_obj.generate_content(_build_user_prompt(query, hits))
+        # Gemini returns response.text when there's a single text candidate.
+        raw = (getattr(response, "text", "") or "").strip()
+        if not raw:
+            return None
+        return json.loads(_strip_json_fence(raw))
+    except Exception:
+        return None
+
+
 def _call_anthropic(query: str, hits: List[dict], model: str) -> Optional[dict]:
     """Call Claude. Return parsed JSON dict, or None on any failure."""
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
@@ -140,15 +190,10 @@ def _call_anthropic(query: str, hits: List[dict], model: str) -> Optional[dict]:
             system=_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": _build_user_prompt(query, hits)}],
         )
-        # response.content is a list of content blocks; first one is text.
         text_blocks = [b.text for b in response.content if getattr(b, "type", "") == "text"]
         if not text_blocks:
             return None
-        raw = text_blocks[0].strip()
-        # Defensive JSON extraction: strip markdown fences if Claude added them.
-        raw = re.sub(r"^```(?:json)?\s*", "", raw)
-        raw = re.sub(r"\s*```\s*$", "", raw)
-        return json.loads(raw)
+        return json.loads(_strip_json_fence(text_blocks[0]))
     except Exception:
         return None
 
@@ -234,6 +279,7 @@ def _log_event(query: str, hits: List[dict], rec: Recommendation) -> None:
                 for h in hits
             ],
             "used_llm": rec.used_llm,
+            "provider": rec.provider,
             "confidence": round(rec.confidence, 4),
             "proposed_count": len(rec.proposed_tasks),
             "citations": rec.citations,
@@ -249,12 +295,19 @@ def _log_event(query: str, hits: List[dict], rec: Recommendation) -> None:
 
 
 class RAGEngine:
-    """Orchestrates the retrieve -> generate -> guardrail -> log flow."""
+    """Orchestrates the retrieve -> generate -> guardrail -> log flow.
+
+    LLM provider order at each ``generate()`` call:
+        1. Gemini if ``GEMINI_API_KEY`` (or ``GOOGLE_API_KEY``) is set
+        2. Anthropic if ``ANTHROPIC_API_KEY`` is set
+        3. Deterministic template
+    """
 
     def __init__(
         self,
         store: Optional[ChromaStore] = None,
-        model: str = _DEFAULT_MODEL,
+        gemini_model: str = _DEFAULT_GEMINI_MODEL,
+        anthropic_model: str = _DEFAULT_ANTHROPIC_MODEL,
     ) -> None:
         # Lazy: load .env if python-dotenv is around, but don't fail without it.
         try:
@@ -266,15 +319,33 @@ class RAGEngine:
 
         self.store = store if store is not None else ChromaStore()
         self.retriever = Retriever(self.store)
-        self.model = model
+        self.gemini_model = gemini_model
+        self.anthropic_model = anthropic_model
+
+    def _try_llms(self, query: str, hits: List[dict]) -> tuple[Optional[dict], str]:
+        """Try Gemini, then Anthropic. Return (parsed_json, provider_name).
+
+        provider_name is "gemini", "anthropic", or "template" (when both fail).
+        """
+        if not hits:
+            return None, "template"
+
+        result = _call_gemini(query, hits, self.gemini_model)
+        if result is not None:
+            return result, "gemini"
+
+        result = _call_anthropic(query, hits, self.anthropic_model)
+        if result is not None:
+            return result, "anthropic"
+
+        return None, "template"
 
     def generate(self, owner, pet, k: int = 5) -> Recommendation:
         """Run the full RAG pipeline for a single (owner, pet) pair."""
         query = build_query(owner, pet)
         hits = self.retriever.top_k(query, k=k) if self.store.count() > 0 else []
 
-        # Try the LLM first; fall back to the deterministic template.
-        llm_result = _call_anthropic(query, hits, self.model) if hits else None
+        llm_result, provider = self._try_llms(query, hits)
         used_llm = llm_result is not None
 
         if llm_result is None:
@@ -309,6 +380,7 @@ class RAGEngine:
             citations=payload["citations"],
             confidence=avg_sim,
             used_llm=used_llm,
+            provider=provider,
             retrieval_hits=hits,
         )
 

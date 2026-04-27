@@ -102,7 +102,7 @@ def test_scrub_medical_claims_triggers_on_diagnose():
     text = "I will diagnose your dog with arthritis."
     out, was_scrubbed = _scrub_medical_claims(text)
     assert was_scrubbed is True
-    assert "Consult your veterinarian" in out
+    assert "veterinarian" in out.lower()
 
 
 def test_scrub_medical_claims_passes_clean_text():

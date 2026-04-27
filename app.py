@@ -1,12 +1,12 @@
-"""PawPal+ Streamlit UI — connects to pawpal_system.py backend."""
+"""PawPal+ AI Streamlit UI — connects to pawpal_system.py backend + RAG layer."""
 
 import streamlit as st
 from pawpal_system import Owner, Pet, Task, Scheduler
 
-st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
+st.set_page_config(page_title="PawPal+ AI", page_icon="🐾", layout="centered")
 
-st.title("PawPal+")
-st.caption("Smart pet care scheduling assistant")
+st.title("PawPal+ AI")
+st.caption("Smart pet care scheduling assistant — now with RAG-powered recommendations")
 
 # ── Session state ─────────────────────────────────────────────────────────────
 if "owner" not in st.session_state:
@@ -16,17 +16,44 @@ if "show_schedule" not in st.session_state:
 
 # ── Owner setup ───────────────────────────────────────────────────────────────
 _existing = st.session_state.owner
+
+def _busy_times_to_text(busy_times):
+    """[(\"09:00\", \"17:00\")] -> \"09:00-17:00\"."""
+    return ", ".join(f"{s}-{e}" for s, e in busy_times) if busy_times else ""
+
+def _parse_busy_times(text):
+    """\"09:00-17:00, 19:00-20:00\" -> [(\"09:00\",\"17:00\"), (\"19:00\",\"20:00\")]."""
+    out = []
+    if not text:
+        return out
+    for chunk in text.split(","):
+        chunk = chunk.strip()
+        if "-" not in chunk:
+            continue
+        start, _, end = chunk.partition("-")
+        out.append((start.strip(), end.strip()))
+    return out
+
 with st.expander("Owner Setup", expanded=_existing is None):
     with st.form("owner_form"):
         owner_name = st.text_input("Owner name", value=_existing.name if _existing else "Jordan")
         contact    = st.text_input("Contact info (optional)", value=_existing.contact_info if _existing else "")
+        busy_text  = st.text_input(
+            "Busy times — used by the AI recommender (HH:MM-HH:MM, comma-separated)",
+            value=_busy_times_to_text(_existing.busy_times) if _existing else "09:00-17:00",
+            help="Example: 09:00-17:00, 19:00-20:00",
+        )
         if st.form_submit_button("Save owner") and owner_name:
+            parsed_busy = _parse_busy_times(busy_text)
             if _existing:
                 # Edit in-place — keeps all pets and tasks
                 _existing.name = owner_name
                 _existing.contact_info = contact
+                _existing.busy_times = parsed_busy
             else:
-                st.session_state.owner = Owner(name=owner_name, contact_info=contact)
+                st.session_state.owner = Owner(
+                    name=owner_name, contact_info=contact, busy_times=parsed_busy
+                )
                 st.session_state.show_schedule = False
             st.success(f"Owner '{owner_name}' saved!")
 
@@ -47,8 +74,16 @@ with st.form("pet_form"):
         species = st.selectbox("Species", ["dog", "cat", "other"])
     with col3:
         age = st.number_input("Age (years)", min_value=0, max_value=30, value=2)
+    col4, col5 = st.columns(2)
+    with col4:
+        energy = st.selectbox("Energy level", ["low", "medium", "high"], index=1)
+    with col5:
+        health_notes = st.text_input("Health notes (optional)", value="", help="e.g. 'senior, mild arthritis'")
     if st.form_submit_button("Add pet") and pet_name:
-        owner.add_pet(Pet(name=pet_name, species=species, age=int(age)))
+        owner.add_pet(Pet(
+            name=pet_name, species=species, age=int(age),
+            energy=energy, health_notes=health_notes,
+        ))
         st.success(f"Added {pet_name} the {species}!")
 
 if owner.pets:
@@ -70,10 +105,20 @@ if owner.pets:
                                            index=["dog", "cat", "other"].index(pet_obj.species))
             with ec3:
                 new_age     = st.number_input("Age", min_value=0, max_value=30, value=pet_obj.age)
+            ec4, ec5 = st.columns(2)
+            with ec4:
+                new_energy = st.selectbox(
+                    "Energy", ["low", "medium", "high"],
+                    index=["low", "medium", "high"].index(getattr(pet_obj, "energy", "medium")),
+                )
+            with ec5:
+                new_health = st.text_input("Health notes", value=getattr(pet_obj, "health_notes", ""))
             if st.form_submit_button("Save changes"):
-                pet_obj.name    = new_name
-                pet_obj.species = new_species
-                pet_obj.age     = int(new_age)
+                pet_obj.name         = new_name
+                pet_obj.species      = new_species
+                pet_obj.age          = int(new_age)
+                pet_obj.energy       = new_energy
+                pet_obj.health_notes = new_health
                 st.success(f"Updated pet to {new_name}!")
 
         # Delete
@@ -225,3 +270,108 @@ if st.session_state.show_schedule and owner.pets:
                             break
             else:
                 st.info("No tasks to delete.")
+
+
+# ── AI Recommendations (RAG layer) ────────────────────────────────────────────
+st.divider()
+st.subheader("AI Recommendations")
+st.caption("Powered by ChromaDB (local) + sentence-transformers + Claude (optional). Advisory only.")
+
+if not owner.pets:
+    st.info("Add at least one pet to get AI-powered recommendations.")
+else:
+    target_pet_name = st.selectbox(
+        "Generate AI schedule for",
+        [p.name for p in owner.pets],
+        key="ai_target_pet",
+    )
+
+    if st.button("Generate AI schedule", type="primary"):
+        with st.spinner("Building local index, retrieving context, generating..."):
+            try:
+                from rag.rag_engine import RAGEngine
+                from rag.vector_store import ChromaStore
+                from recommender.ranker import apply_recommendation
+
+                store = ChromaStore()
+                store.ingest_knowledge_base()  # idempotent — only builds once
+                engine = RAGEngine(store=store)
+                pet_obj = next(p for p in owner.pets if p.name == target_pet_name)
+                rec = engine.generate(owner, pet_obj, k=5)
+                result = apply_recommendation(
+                    rec,
+                    busy_times=owner.busy_times,
+                    existing_tasks=pet_obj.tasks,
+                )
+                st.session_state["last_ai_result"] = result
+                st.session_state["last_ai_rec"]    = rec
+            except Exception as e:
+                st.error(f"AI generation failed: {e}")
+                st.info("Make sure `pip install -r requirements.txt` has run.")
+
+    result = st.session_state.get("last_ai_result")
+    rec    = st.session_state.get("last_ai_rec")
+
+    if result and rec:
+        # Confidence gauge
+        conf = result["confidence"]
+        label = result["confidence_label"]
+        cc1, cc2, cc3 = st.columns(3)
+        with cc1:
+            st.metric("Confidence", f"{conf:.2f}", label.upper())
+        with cc2:
+            st.metric("Mode", "LLM" if result["used_llm"] else "Template")
+        with cc3:
+            st.metric("Slots kept", f"{len(result['kept'])} / {len(result['kept']) + len(result['dropped'])}")
+
+        # Explanation + scrub warning
+        if result["explanation"]:
+            st.info(result["explanation"])
+
+        # Recommended schedule table
+        if result["ranked"]:
+            rows = [
+                {
+                    "Time":     s.get("time", "—"),
+                    "Task":     s.get("title", "—"),
+                    "Duration": f"{s.get('duration_minutes', 15)} min",
+                    "Priority": s.get("priority", "medium"),
+                    "Score":    f"{s.get('score', 0.0):.2f}",
+                    "Shifted":  "yes" if s.get("shifted") else "",
+                    "Rationale": s.get("rationale", "")[:80],
+                }
+                for s in result["ranked"]
+            ]
+            st.markdown("**Recommended schedule (constraint-validated)**")
+            st.table(rows)
+
+            # One-click "add all to my pet"
+            if st.button("Add all kept tasks to " + target_pet_name):
+                pet_obj = next(p for p in owner.pets if p.name == target_pet_name)
+                for s in result["kept"]:
+                    pet_obj.add_task(Task(
+                        title=s.get("title", "AI task"),
+                        time=s.get("time", "12:00"),
+                        duration_minutes=int(s.get("duration_minutes", 15)),
+                        priority=s.get("priority", "medium"),
+                        description=s.get("rationale", ""),
+                        frequency="daily",
+                    ))
+                st.success(f"Added {len(result['kept'])} tasks to {target_pet_name}.")
+
+        # Dropped (constraint violations)
+        if result["dropped"]:
+            with st.expander(f"Dropped slots ({len(result['dropped'])})"):
+                for d in result["dropped"]:
+                    reason = d.get("drop_reason", "unknown")
+                    st.warning(f"{d.get('time', '?')} — {d.get('title', '?')} — dropped ({reason})")
+
+        # Citations
+        if result["citations"]:
+            with st.expander("Sources used"):
+                for c in result["citations"]:
+                    st.write(f"- `{c}`")
+
+        # Confidence-based guidance
+        if label == "low":
+            st.warning("Low confidence — consider adding more pets or richer health notes for better matches.")

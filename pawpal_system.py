@@ -36,6 +36,8 @@ class Pet:
     name: str
     species: str
     age: int
+    energy: str = "medium"           # "low" | "medium" | "high"
+    health_notes: str = ""           # free-text, e.g. "senior, arthritis"
     tasks: list = field(default_factory=list)
 
     def add_task(self, task: Task):
@@ -54,9 +56,11 @@ class Pet:
 class Owner:
     """Manages a collection of pets and provides a unified task view."""
 
-    def __init__(self, name: str, contact_info: str = ""):
+    def __init__(self, name: str, contact_info: str = "", busy_times: Optional[list] = None):
         self.name = name
         self.contact_info = contact_info
+        # list of (start, end) HH:MM tuples — used by the AI recommender's constraint engine
+        self.busy_times: list[tuple[str, str]] = busy_times or []
         self.pets: list[Pet] = []
 
     def add_pet(self, pet: Pet):

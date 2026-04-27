@@ -1,5 +1,16 @@
 __pycache__/
+*.pyc
 .venv/
 .venv_new/
 .pytest_cache/
 .DS_Store
+.env
+
+# Local persistent vector store — rebuilt from data/knowledge_base/ on first run
+data/chroma/
+
+# Sentence-transformer model cache
+.cache/
+
+# Logs
+logs/

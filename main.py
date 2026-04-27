@@ -1,52 +1,107 @@
-"""Demo script: verify PawPal+ backend logic in the terminal."""
+"""End-to-end CLI demo: ingest knowledge base -> retrieve -> generate -> validate -> print.
+
+Run: python main.py
+
+This script exercises the full RAG pipeline. It works without an Anthropic API key
+(falls back to the deterministic template) and without a pre-built vector store
+(builds it from data/knowledge_base/ on first run, then reuses).
+"""
 
 from pawpal_system import Owner, Pet, Task, Scheduler
 
-# --- Setup ---
-owner = Owner(name="Jordan", contact_info="jordan@email.com")
 
-mochi = Pet(name="Mochi", species="dog", age=3)
-luna = Pet(name="Luna", species="cat", age=5)
+def section(title: str) -> None:
+    bar = "=" * 60
+    print(f"\n{bar}\n  {title}\n{bar}")
 
-owner.add_pet(mochi)
-owner.add_pet(luna)
 
-# --- Add tasks (intentionally out of order) ---
-mochi.add_task(Task(title="Evening walk",   time="18:00", duration_minutes=30, priority="high",   frequency="daily"))
-mochi.add_task(Task(title="Morning walk",   time="08:00", duration_minutes=20, priority="high",   frequency="daily"))
-mochi.add_task(Task(title="Flea treatment", time="09:00", duration_minutes=5,  priority="medium", frequency="weekly"))
-luna.add_task(Task( title="Feeding",        time="08:00", duration_minutes=10, priority="high",   frequency="daily"))
-luna.add_task(Task( title="Grooming",       time="14:00", duration_minutes=15, priority="low",    frequency="weekly"))
+def main() -> None:
+    # ── 1. Build the household ────────────────────────────────────────────────
+    section("1. Household setup")
+    owner = Owner(
+        name="Jordan",
+        contact_info="jordan@email.com",
+        busy_times=[("09:00", "17:00")],
+    )
 
-scheduler = Scheduler(owner)
+    mochi = Pet(name="Mochi", species="dog", age=3, energy="high",   health_notes="")
+    luna  = Pet(name="Luna",  species="cat", age=11, energy="low",   health_notes="senior, mild arthritis")
+    owner.add_pet(mochi)
+    owner.add_pet(luna)
 
-# --- Today's schedule (sorted) ---
-print("=" * 45)
-print(f"  PawPal+ Daily Schedule for {owner.name}")
-print("=" * 45)
-for task in scheduler.sort_by_time():
-    status = "[done]" if task.completed else "[    ]"
-    print(f"  {status}  {task.time}  {task.title:<20}  [{task.priority}]  ({task.frequency})")
-print()
+    # Pre-existing tasks the AI must respect when validating its own proposals.
+    mochi.add_task(Task(title="Morning walk", time="07:30", duration_minutes=30, priority="high", frequency="daily"))
+    luna.add_task( Task(title="Feeding",      time="07:00", duration_minutes=10, priority="high", frequency="daily"))
 
-# --- Conflict detection ---
-conflicts = scheduler.detect_conflicts()
-if conflicts:
-    print("WARNING: Conflicts detected:")
-    for c in conflicts:
-        print(f"   {c}")
-else:
-    print("No scheduling conflicts.")
-print()
+    print(f"Owner: {owner.name}, busy {owner.busy_times}")
+    print(f"Pets:  {[(p.name, p.species, p.energy, p.age) for p in owner.pets]}")
 
-# --- Mark Mochi's morning walk complete and show recurrence ---
-morning_walk = mochi.tasks[1]
-print(f"Marking '{morning_walk.title}' complete (frequency={morning_walk.frequency})...")
-morning_walk.mark_complete()
-print(f"  completed={morning_walk.completed}, next due={morning_walk.due_date}")
-print()
+    # ── 2. Existing rule-based schedule (the Module 2 layer) ──────────────────
+    section("2. Existing rule-based schedule (no AI)")
+    scheduler = Scheduler(owner)
+    for t, pn in scheduler.get_tasks_with_pets():
+        status = "[done]" if t.completed else "[    ]"
+        print(f"  {status} {t.time}  {t.title:<20} ({pn}) — {t.frequency}")
 
-# --- Filter by pet ---
-print("Luna's tasks:")
-for task in scheduler.filter_by_pet("Luna"):
-    print(f"  {task.time}  {task.title}")
+    # ── 3. RAG pipeline ───────────────────────────────────────────────────────
+    section("3. RAG pipeline — ingest -> retrieve -> generate")
+
+    try:
+        from rag.rag_engine import RAGEngine
+        from rag.vector_store import ChromaStore
+        from recommender.ranker import apply_recommendation
+    except ImportError as e:
+        print(f"\n[ERROR] RAG dependencies not installed: {e}")
+        print("Run: pip install -r requirements.txt")
+        return
+
+    print("Building local Chroma index from data/knowledge_base/...")
+    store = ChromaStore()
+    chunk_count = store.ingest_knowledge_base()
+    print(f"Index ready: {chunk_count} chunks in collection '{store.COLLECTION_NAME}'.")
+
+    engine = RAGEngine(store=store)
+
+    for pet in owner.pets:
+        section(f"4. AI recommendations for {pet.name} the {pet.species}")
+        rec = engine.generate(owner, pet, k=5)
+
+        print(f"  used_llm:       {rec.used_llm}")
+        print(f"  retrieval avg:  {rec.confidence:.3f}")
+        print(f"  citations:      {rec.citations[:3]}{'...' if len(rec.citations) > 3 else ''}")
+        print(f"  explanation:    {rec.explanation[:100]}{'...' if len(rec.explanation) > 100 else ''}")
+
+        # Recommender layer — validate against owner.busy_times + existing tasks
+        result = apply_recommendation(
+            rec,
+            busy_times=owner.busy_times,
+            existing_tasks=pet.tasks,
+        )
+
+        print(f"\n  Confidence: {result['confidence']:.2f} ({result['confidence_label'].upper()})")
+        print(f"  Kept: {len(result['kept'])}  Dropped: {len(result['dropped'])}")
+
+        print("\n  Ranked schedule:")
+        for s in result["ranked"]:
+            shifted = "*" if s.get("shifted") else " "
+            print(f"   {shifted} {s.get('time', '?')}  {s.get('title', '?'):<22} "
+                  f"score={s.get('score', 0):.2f}  ({s.get('priority', 'medium')})")
+
+        if result["dropped"]:
+            print("\n  Dropped (constraint violations):")
+            for d in result["dropped"]:
+                print(f"    - {d.get('time', '?')}  {d.get('title', '?'):<22} reason={d.get('drop_reason', '?')}")
+
+    # ── 5. Top retrieval hits for inspection ──────────────────────────────────
+    section("5. Top retrieval hits for Mochi (debug view)")
+    from rag.feature_builder import build_query
+    q = build_query(owner, mochi)
+    print(f"Query:\n  {q}\n")
+    for i, hit in enumerate(store.query(q, k=5), start=1):
+        print(f"  [{i}] score={hit['score']:.3f}  source={hit['source']}")
+        print(f"      {hit['text'][:140].strip()}...")
+    print()
+
+
+if __name__ == "__main__":
+    main()

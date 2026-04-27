@@ -1,314 +1,182 @@
-# Show What You Know: PawPal+
+# Show What You Know: Applied AI System
+
 ## ℹ️ Project Overview
-⏰ ~4 hours
+> ⏰ ~4 hours
 
-You've been asked to design PawPal+, a smart pet care management system that helps owners keep their furry friends happy and healthy. The app will track daily routines -- feedings, walks, medications, and appointments -- while using algorithmic logic to organize and prioritize tasks.
+This final project is your opportunity to bring everything together, from debugging and design (Module 1-2) to reasoning and retrieval (Module 3-4), and finally agentic workflows and reliability testing (Module 5).
 
-Your mission is to move from concept to a working application by designing a modular system architecture using Python’s object-oriented programming (OOP). You will act as the lead architect, using AI to brainstorm your design, scaffold your core logic, and implement sophisticated scheduling algorithms. You will practice a "CLI-first" workflow, ensuring your backend logic in pawpal_system.py is robust and verified through a demo script before connecting it to a modern Streamlit UI.
+You'll choose one of your previous projects from Modules 1-3 and extend it into a full applied AI system that solves a meaningful problem or automates a reasoning task. This is your chance to evolve an earlier prototype into a polished, professional artifact.
 
-## 🎯 Goals
-By completing this project, you will be able to...
+Your system should demonstrate responsible design, technical creativity, and clear explanation of how the AI works and why it's trustworthy.
 
-Design a modular system using Python classes and visualize relationships with AI-generated Mermaid.js UML diagrams.
-Implement OOP principles to represent real-world entities like Owners, Pets, and Tasks.
-Develop algorithmic logic for sorting, conflict detection, and recurring task management.
-Verify system behavior through a CLI demo script and automated pytest suites generated with AI assistance.
-Communicate design intent and reflect on AI-human collaboration tradeoffs in a professional README and consolidated reflection.
 
-## ✏️ Project Instructions
+# 🎯 Goals
 
-### Phase 1: System Design with UML + AI Support
-⏰ ~45 mins
+> By completing this project, you will be able to...
 
-In this phase, you'll design the structure of your PawPal+ app before writing any code. You'll use AI to help brainstorm and visualize the main components (Owner, Pet, Task, Scheduler) and how they connect in a simple UML diagram.
+Extend and redesign a prior mini-project into a cohesive, end-to-end AI integrated system.
+Implement modular components (retrieval, logic, or agentic planning) using Python.
+Test and evaluate system reliability and guardrails through structured experiments.
+Document and explain the AI's decision-making process clearly and responsibly.
+Communicate results through a professional presentation and portfolio entry.
+📊 Before you start, review the Grading Rubric to understand exactly how your project will be evaluated, including required features and optional stretch challenges worth extra points.
 
-Step 1: Understand the Problem
+⚙️ Project Requirements
+Your final project is about taking what you've already built and making it stronger, smarter, and more reliable. You'll extend one of your previous projects (from Modules 1-3) into a complete applied AI system.
 
-Go to the PawPal+ repo.
-Click Fork to create your own copy under your GitHub account, then clone your fork to your computer.
-Clone the fork to your computer, then open the cloned folder in VS Code.
-Read the scenario in README.md to understand what PawPal+ is intended to do.
-Identify three core actions a user should be able to perform (e.g., add a pet, schedule a walk, see today's tasks).
-Open reflection.md and document these actions in natural language under the System Design section.
-Step 2: List the Building Blocks
 
-Brainstorm the main objects needed for the system. For each object, determine:
-What information it needs to hold (attributes)
-What actions it can perform (methods)
-Step 3: Draft Your UML with AI
+## 💡 Example Extensions
 
+Extension Idea	| Added AI Components
+Add retrieval of external documentation and automated validation of answers	| RAG + testing + guardrails
+Integrate agentic planning and error-logging into the existing workflow	| Agentic loop + logging
+Extend explanation module with bias detection and evaluation metrics	| RAG + validation
+Add reliability scoring or self-critique loop	| Testing + confidence scoring
 
-Open the Copilot Chat in VS Code.
 
+# 0. Preparing Your Project Environment
 
-Mention you are designing a pet care app with the four classes identified above.
+Because this project is an evolution of your earlier work, you should create a dedicated copy of your chosen repo. This allows you to experiment freely without altering your original Module 1-3 submission.
 
 
-Ask Copilot to create a Mermaid.js class diagram based on your brainstormed attributes and methods.
+Go to GitHub and create a new, public repo.
 
-Mermaid is a text-based tool that renders diagrams. You can preview Mermaid code in VS Code or paste it into the Mermaid Live Editor to see your chart.
+Name it something professional, like applied-ai-system-project.
+Do not initialize it with a README, license, or .gitignore. Keep it completely empty.
+Copy the URL of this new repo (e.g., https://github.com/username/applied-ai-system-final.git)
 
-Review the diagram. Ensure relationships (like "Owner has Pets") make sense and that you haven't included unnecessary complexity.
+Clone your original repo into a new folder on your computer:
 
+git clone https://github.com/username/your-original-repo.git applied-ai-system-final
+Enter the folder: cd applied-ai-system-final
 
-Keep this diagram handy - we'll revisit it in Phase 6!
+Update the remote to point to your new repo:
 
-Step 4: Translate UML into a Skeleton
+git remote set-url origin https://github.com/username/applied-ai-system-final.git
 
+Push everything to your new repo:
 
-Create a new file named pawpal_system.py. This will be your "logic layer" where all your backend classes live.
+git push -u origin main
+Note: If your default branch is named master instead of main, use git push -u origin master.
 
+Verify the connection: go to your new repo on GitHub and confirm your code and commit history are there.
 
-Use Inline Chat or Agent mode to generate the "skeleton" of your classes (the names, attributes, and empty method stubs) based on your UML.
+Before you begin coding, set up a professional folder structure in your new repo.
 
-Tell Copilot to use Python Dataclasses for objects like Task and Pet to keep your code clean.
+Create a folder in your project called assets. This will be your dedicated directory for your system architecture images and screenshots.
+If you are using Mermaid.js for your diagrams, be aware that free accounts are often limited to three charts. To avoid this limit, use the Mermaid Live Editor to build your diagram, then export it as a PNG and save it into your /assets folder.
 
-Commit your draft to GitHub: git commit -m "chore: add class skeletons from UML".
 
-Step 5: Reflect and Refine
+# 1. Functionality: What Your System Should Do
 
-Open reflection.md.
-Answer section "1a. Initial design" by describing the classes you chose and their responsibilities.
-Ask Copilot to review your skeleton: Use #file:pawpal_system.py and ask if it notices any missing relationships or potential logic bottlenecks.
-If you make changes based on AI feedback, document what you changed and why in section "1b. Design changes".
-📍Checkpoint: You've created a clear UML diagram and matching Python class skeletons in pawpal_system.py! Your system's blueprint is complete and ready for implementation.
+> Your project should do something useful with AI. For example:
 
-### Phase 2: Core Implementation
-⏰ ~90 mins
+Summarize text or documents
+Retrieve information or data from a source
+Plan and complete a step-by-step task
+Help debug, classify, or explain something
+To make your project more advanced, it must include at least one of the following AI features:
 
-In this phase, you'll translate your UML design into working Python code. You'll follow a "CLI-first" workflow, meaning you'll build and verify your backend logic in a standalone script before touching the Streamlit UI. This ensures your system's "brain" is solid.
+Feature	What It Means	Example
+Retrieval-Augmented Generation (RAG)	Your AI looks up or retrieves information before answering.	A study bot that searches notes before generating a quiz question.
+Agentic Workflow	Your AI can plan, act, and check its own work.	A coding assistant that writes, tests, and then fixes code automatically.
+Fine-Tuned or Specialized Model	You use a model that’s been trained or adjusted for a specific task.	A chatbot tuned to respond in a company’s tone of voice.
+Reliability or Testing System	You include ways to measure or test how well your AI performs.	A script that checks if your AI gives consistent answers.
+The feature should be fully integrated into the main application logic. It is not enough to have standalone script; the feature must meaningfully change how the system behaves or processes information. For example, if you add RAG, your AI should actively use the retrieved data to formulate its response rather than just printing the data alongside a standard answer.
 
-Step 1: Scaffold the Logic Layer
+Also, make sure your project:
 
-Now you'll write the full code for all your main classes.
+Runs correctly and reproducibly: If someone follows your instructions, it should work.
+Includes logging or guardrails: Your code should track what it does and handle errors safely.
+Has clear setup steps: Someone else should be able to run it without guessing what to install.
 
-Use Agent Mode to flesh out the core implementation of your four classes in pawpal_system.py
 
-Task: Represents a single activity (description, time, frequency, completion status).
+# 2. Design and Architecture: How Your System Fits Together
 
+> Show how your project is organized by creating a short system diagram. Your diagram should include:
 
-Pet: Stores pet details and a list of tasks.
+The main components (like retriever, agent, evaluator, or tester).
+How data flows through the system (input → process → output).
+Where humans or testing are involved in checking AI results.
 
 
-Owner: Manages multiple pets and provides access to all their tasks.
+# 3. Documentation: How You Explain Your Work
 
+> You'll write a README file that clearly explains your project. It should include:
 
-Scheduler: The "Brain" that retrieves, organizes, and manages tasks across pets.
+Explicitly name your original project (from Modules 1-3) and provide a 2-3 sentence summary of its original goals and capabilities.
+Title and Summary: What your project does and why it matters.
+Architecture Overview: A short explanation of your system diagram.
+Setup Instructions: Step-by-step directions to run your code.
+Sample Interactions: Include at least 2-3 examples of inputs and the resulting AI outputs to demonstrate the system is functional.
+Design Decisions: Why you built it this way, and what trade-offs you made.
+Testing Summary: What worked, what didn't, and what you learned.
+Reflection: What this project taught you about AI and problem-solving.
+Write this for a future employer who might look at your GitHub portfolio! Clarity and completeness matter more than perfection.
 
-If you aren't sure how a Scheduler should "talk" to an Owner to get pet data, ask Copilot: "Based on my skeletons in #file:pawpal_system.py, how should the Scheduler retrieve all tasks from the Owner's pets?"
-Step 2: Create and Run a Demo Script
 
+# 4. Reliability and Evaluation: How You Test and Improve Your AI
 
-Create a new file named main.py. This is your temporary "testing ground" to verify your logic works in the terminal.
+> Your AI should prove that it works, not just seem like it does. Include at least one way to test or measure its reliability, such as:
 
+Automated tests (e.g., unit tests or simple checks for key functions).
+Confidence scoring (the AI rates how sure it is).
+Logging and error handling (your code records what failed and why).
+Human evaluation (you or a peer review the AI's output).
+Summarize your testing in a few lines, like:
 
-Write a script in main.py that performs the following:
+5 out of 6 tests passed; the AI struggled when context was missing. Confidence scores averaged 0.8; accuracy improved after adding validation rules.
 
-Imports your classes from pawpal_system.py.
-Creates an Owner and at least two Pets .
-Adds at least three Tasks with different times to those pets.
-Prints a "Today's Schedule" to the terminal.
 
-Run your script: python main.py.
+# 5. Reflection and Ethics: Thinking Critically About Your AI
 
-If your schedule prints out as a messy list of objects, use Inline Chat on your print statement and ask: "Suggest a clearer, more readable way to format this schedule output for the terminal".
-Step 3: Add Quick Tests
+> AI isn't just about what works -- it's about what's responsible. Include a short reflection answering the following questions:
 
-Open the terminal and ensure you have pytest installed (pip install pytest).
-Create a file named tests/test_pawpal.py.
-Use the Generate tests smart action or Copilot Chat to draft two simple tests:
-Task Completion: Verify that calling mark_complete() actually changes the task's status.
-Task Addition: Verify that adding a task to a Pet increases that pet's task count.
-Run your tests by typing python -m pytest in the terminal.
-Step 4: Document, Reflect, and Merge
+What are the limitations or biases in your system?
+Could your AI be misused, and how would you prevent that?
+What surprised you while testing your AI's reliability?
+describe your collaboration with AI during this project. Identify one instance when the AI gave a helpful suggestion and one instance where its suggestion was flawed or incorrect.
+🚀 Optional: Stretch Features for Extra Points
+These features are completely optional and go beyond the required 21 points. Completing them can earn up to +8 additional points, allowing your score to exceed 100%. See the Grading Rubric for how each is evaluated.
 
-Use the Generate documentation smart action to add 1-line docstrings to your methods in pawpal_system.py
-Use Copilot's Generate Commit Message feature in the Source Control tab to summarize your implementation.
-Push your work: git push origin main.
-📍Checkpoint: You've transformed your UML design into a functioning system! Your classes now work together to manage pets, tasks, and schedules, and you've verified them using a CLI demo script and initial automated tests.
+Feature	What To Build	Points
+RAG Enhancement	Extend your retrieval system to use custom documents or multiple data sources. Show how it measurably improves your AI's output quality.	+2
+Agentic Workflow Enhancement	Implement multi-step reasoning with observable intermediate steps — tool-calls, planning steps, or a decision-making chain.	+2
+Fine-Tuning or Specialization	Demonstrate specialized model behavior using few-shot patterns, synthetic datasets, or constrained tone/style. Show that output measurably differs from the baseline.	+2
+Test Harness or Evaluation Script	Build a script that runs your system on a set of predefined inputs and prints a summary (pass/fail scores, confidence ratings, or similar).	+2
+Note: These stretch features build directly on the required AI feature you chose in Step 1. For example, if you added RAG as your required feature, the RAG Enhancement stretch would extend that same component further.
 
-### Phase 3: UI and Backend Integration
-⏰ ~20 mins
 
-Currently, your logic (pawpal_system.py) and your user interface (app.py) live in separate worlds. In this phase, you will act as the "bridge" to ensure that when a user clicks a button in the app, your Python classes actually respond.
+# 6. Presentation and Portfolio: Sharing Your Work Professionally
 
-Step 1: Establish the Connection
+> You'll wrap up by sharing your final project.
 
-To use the Owner, Pet, and Task classes inside your Streamlit script, you must first make them accessible.
+Prepare a 5-7 minute presentation showing your system, demo, and what you learned.
+Add a portfolio artifact:
+A GitHub link to your code
+A short reflection paragraph: What this project says about me as an AI engineer.
+Record a Loom video walkthrough (required): Create a short walkthrough showing your system running end-to-end. To record, we recommend using Loom. Include the link in your README.
+[IMPORTANT]
+To receive an accurate grade, please make sure your video walkthrough clearly demonstrates the following features:
 
-Use a Python import statement to bring specific classes from pawpal_system.py into app.py.
-Step 2: Manage the Application "Memory"
+✅ End-to-end system run (2–3 inputs)
+✅ AI feature behavior (RAG, agent, etc.)
+✅ Reliability/guardrail or evaluation behavior
+✅ Clear outputs for each case
+It does not need to show code setup, file structure, or installation steps.
 
-Streamlit is stateless, meaning it runs your code from top to bottom every time you click a button. If you simply create an Owner at the top of the script, it will be "reborn" (and empty) every time the page refreshes.
+If you are unsure about including something in your video, consult the Grading Rubric.
 
 
-Use AI to investigate st.session_state. Find out how to check if an object (like your Owner instance) already exists in the "vault" of the session before creating a new one.
+# 📬 Submitting Your Project
 
-Think of st.session_state as a dictionary. You want to store your Owner object there so your data persists while you navigate the app.
-Step 3: Wiring UI Actions to Logic
+> Once you've completed all the required features for your project, use the following checklist to prepare your work for submission.
 
-
-Locate the UI components for "Adding a Pet" or "Scheduling a Task" in app.py. Replace those placeholders with calls to the methods you wrote in Phase 2.
-
-If a user submits a form to add a new pet, which class method should handle that data, and how does the UI get updated to show the change?
-📍Checkpoint: Your app.py successfully imports your logic layer! Adding a pet in the browser actually creates a Pet object that stays in memory.
-
-### Phase 4: Algorithmic Layer
-⏰ ~45 mins
-
-Make your PawPal+ system smart! In this phase, you'll add simple algorithms that make your app more functional and intelligent -- sorting, filtering, recurring tasks, and basic conflict detection. You'll ask AI to brainstorm, write, and compare solutions, learning how to evaluate algorithmic choices for clarity and efficiency.
-
-Step 1: Review and Plan
-
-Review your main.py demo from Phase 2. Identify where the current logic feels manual or overly simple.
-Open a New Chat Session to keep your algorithmic planning separate from your core implementation.
-Use #codebase to ask Copilot to suggest a list of small algorithms or logic improvements that could make your scheduling app more efficient for a pet owner.
-Target Features: You will implement logic for sorting tasks by time, filtering by pet/status, handling recurring tasks, and basic conflict detection .
-Step 2: Implement Sorting and Filtering
-
-
-Open pawpal_system.py.
-
-
-Sorting Logic: Use Inline Chat on your Scheduler.sort_by_time() method to ask for a way to sort your Task objects by their time attribute.
-
-Python's sorted() function is powerful. Ask Copilot how to use a lambda function as a "key" to sort strings in "HH:MM" format.
-
-Filtering Logic: Use Agent Mode to implement a method that filters tasks by completion status or pet name.
-
-
-Update your main.py to add tasks out of order, then print the results using your new sorting and filtering methods to ensure they work in the terminal.
-
-Step 3: Automate Recurring Tasks
-
-
-Add logic to your Task or Scheduler class so that when a "daily" or "weekly" task is marked complete, a new instance is automatically created for the next occurrence.
-
-
-Use Agent Mode to handle this change, as it may require edits to how mark_task_complete interact with the Task frequency.
-
-If a task happens "Daily," its new due date should be today + 1 day. Ask Copilot how to use Python's timedelta to calculate this accurately.
-Step 4: Detect Task Conflicts
-
-Extend your Scheduler to detect if two tasks for the same pet (or different pets) are scheduled at the same time.
-Ask Copilot for a "lightweight" conflict detection strategy that returns a warning message rather than crashing the program.
-Update main.py with two tasks at the same time and verify that your Scheduler correctly identifies and prints a warning.
-Step 5: Evaluate and Refine
-
-Share one of your completed algorithmic methods with Copilot and ask: "How could this algorithm be simplified for better readability or performance?".
-Review the AI's suggestion. If its version is more "Pythonic" but harder for a human to read, decide which version to keep.
-Open reflection.md and document one tradeoff your scheduler makes (e.g., only checking for exact time matches instead of overlapping durations) in section "2b. Tradeoffs".
-Step 6: Document and Merge
-
-
-Use the Generate documentation smart action to add docstrings to your new algorithmic methods.
-
-
-Update your README.md with a short section called Smarter Scheduling summarizing your new features.
-
-
-Commit and push your changes directly to the main branch:
-
-git add .
-git commit -m "feat: implement sorting, filtering, and conflict detection"
-git push origin main
-📍Checkpoint: You've added algorithmic intelligence to PawPal+! Your system can now sort, filter, detect conflicts, and handle recurring tasks, all verified through your CLI demo script.
-
-### Phase 5: Testing and Verification
-⏰ ~30 mins
-
-In this phase, you'll test and verify that your PawPal+ system works as intended. You'll write and run simple tests to confirm that your classes, algorithms, and scheduling logic behave correctly, and use AI to help generate, explain, and review those tests.
-
-Step 1: Plan What to Test
-
-
-Review your pawpal_system.py and list 3–5 core behaviors to verify.
-
-
-Start a New Chat Session in Copilot Chat to focus entirely on testing.
-
-
-Use #codebase to ask Copilot for a test plan: "What are the most important edge cases to test for a pet scheduler with sorting and recurring tasks?" .
-
-Focus on "happy paths" (everything works) and "edge cases" (e.g., a pet with no tasks, or two tasks at the exact same time).
-Step 2: Build the Automated Test Suite
-
-Navigate back to tests/test_pawpal.py.
-Use the Generate tests smart action or Copilot Chat to draft your test functions.
-Ensure your suite includes at least:
-
-Sorting Correctness: Verify tasks are returned in chronological order.
-
-
-Recurrence Logic: Confirm that marking a daily task complete creates a new task for the following day.
-
-
-Conflict Detection: Verify that the Scheduler flags duplicate times.
-
-Use Ask mode in Chat to explain any test code you don't understand before you save it.
-Step 3: Run and Debug
-
-In your terminal, run your tests using: python -m pytest.
-If a test fails, use Inline Chat on the failing test and ask: "Why is this test failing, and is the bug in my test code or my pawpal_system.py logic?".
-Rerun python -m pytest until all tests pass with green checkmarks.
-Step 4: Finalize Documentation and Merge
-
-
-Open your README.md and add a section titled "Testing PawPal+".
-
-
-Include the command to run tests (python -m pytest) and a brief description of what your tests cover.
-
-
-Provide your "Confidence Level" (1–5 stars) in the system's reliability based on your test results.
-
-
-Commit and push your test suite to the main branch:
-
-git add .
-git commit -m "test: add automated test suite for PawPal+ system"
-git push origin main
-📍Checkpoint: You've built a robust test suite that verifies your system's intelligence! You've practiced using AI to generate and debug tests while maintaining the human oversight needed to ensure they are meaningful.
-Phase 6: UI Polish, Documentation, and Reflection
-⏰ ~30 mins
-
-In this final phase, you will package your PawPal+ project for others to understand and use. You'll ensure your UI accurately reflects the smart logic you built, finalize your system diagram, and complete a deep reflection on your AI-assisted engineering process.
-
-Step 1: Reflect the Algorithmic Layer in the UI
-
-Your backend is now "smart," but your UI might still be basic. Ensure the user can actually see and use the features you built in Phase 3.
-
-
-Update your display logic in app.py to use the methods from your Scheduler class (like sorting or conflict warnings).
-
-
-Use Streamlit components like st.success, st.warning, or st.table to make the sorted and filtered data look professional.
-
-If your Scheduler flags a task conflict, how should that warning be presented in the Streamlit UI to be most helpful to a pet owner?
-Step 2: Finalize Your System Architecture (UML)
-
-Revisit the Mermaid.js UML diagram you drafted in Phase 1. Does it still match your final code in pawpal_system.py?
-Use Copilot with #file:pawpal_system.py and ask: "Based on my final implementation, what updates should I make to my initial UML diagram to accurately show how my classes interact?".
-Adjust your Mermaid code or draw.io diagram to reflect any new methods or relationships you added during the build.
-Save your final diagram as uml_final.png (or a similar image format) in your project folder.
-Step 3: Polish Your README
-
-
-Open README.md. Your README should act as a professional manual for your app.
-
-
-Use Copilot with #codebase to help draft a "Features" list that accurately describes the algorithms you implemented (e.g., "Sorting by time," "Conflict warnings," "Daily recurrence").
-
-
-Include a screenshot of your final Streamlit app in the "📸 Demo" section.
-
-To embed your screenshot, use the Markdown syntax: <a href="/course_images/ai110/your_screenshot_name.png" target="_blank"><img src='/course_images/ai110/your_screenshot_name.png' title='PawPal App' width='' alt='PawPal App' class='center-block' /></a>.
-Step 4: Write Your Reflection
-
-Open reflection.md. You will complete the structured prompts covering your design choices, tradeoffs, and AI strategy.
-Reflect on AI Strategy: Specifically describe your experience with VS Code Copilot:
-Which Copilot features were most effective for building your scheduler?
-Give one example of an AI suggestion you rejected or modified to keep your system design clean.
-How did using separate chat sessions for different phases help you stay organized?
-Summarize what you learned about being the "lead architect" when collaborating with powerful AI tools.
-📍Checkpoint: You've documented, reflected on, and finalized your PawPal+ project, transforming it from a coding exercise into a polished, professional artifact! You can now clearly explain your design, your reasoning, and your role as the human collaborator in an AI-assisted workflow.
+Code is pushed to the correct GitHub repository
+Repo is public
+Required files are present: You must include your functional code, a comprehensive README.md, a model_card.md for reflections, and a System Architecture Diagram (embedded in the README or as a separate image file).
+Organized Assets: Your system diagram and any demo screenshots should be stored in a dedicated /assets or /diagrams folder within your repository.
+Commit history shows multiple meaningful commits
+Standardized Documentation: Your README.md must identify your base project, and your model_card.md must answer all reflection prompts regarding AI collaboration, biases, and testing results.
+Demo walkthrough is included: Your README.md contains a Loom video link (or GIF/screenshot walkthrough) showing your system running end-to-end with at least 2-3 example inputs and AI responses.
+Final changes are committed and pushed before the deadline

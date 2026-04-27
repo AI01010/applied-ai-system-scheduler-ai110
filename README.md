@@ -3,6 +3,7 @@
 > An intelligent pet-care recommender that combines a deterministic scheduler with a Retrieval-Augmented Generation (RAG) layer and a hybrid constraint-aware ranker.
 
 **Base project:** [PawPal+ (Module 2)](#base-project) — a Streamlit pet-care scheduler with `Owner / Pet / Task / Scheduler` classes, sort/filter/conflict detection, and recurring tasks. This repo extends it into a full applied AI system per the Module 5 final project rubric.
+                  Based on: https://github.com/AI01010/ai110-module2show-pawpal-starter
 
 **Loom walkthrough:** _add link here before submission_ — `https://www.loom.com/share/<your-video-id>`
 
@@ -13,7 +14,7 @@
 Given an owner with `busy_times` and one or more pets (species, age, energy, health notes), PawPal+ AI generates a personalized daily schedule by:
 
 1. **Retrieving** the most semantically similar passages from a 33-document local knowledge base (ChromaDB + MiniLM).
-2. **Generating** 3–6 grounded task proposals via Claude (or a deterministic template fallback if no API key).
+2. **Generating** 3–6 grounded task proposals via **Gemini (free)** or Claude, with a deterministic template fallback if no API key is set.
 3. **Validating** each proposal against the owner's calendar and the pet's existing tasks; auto-shifting violators where possible.
 4. **Ranking** the survivors by `0.6 × cosine_similarity + 0.4 × constraint_satisfaction`.
 5. **Scoring** an overall confidence with a `high/medium/low` label.
@@ -37,7 +38,7 @@ The Streamlit UI surfaces the ranked schedule, a confidence gauge, dropped slots
         ↓                                          ↓
 [Retriever (top-5 cosine)]  ←─────────────────────┘
         ↓
-[RAG Engine]   ── Anthropic Claude (or deterministic template fallback)
+[RAG Engine]   ── Gemini (free) → Anthropic (paid) → Template fallback
         ↓
 [Recommendation Layer]
    • ConstraintEngine   — validate + auto-shift around busy_times & existing tasks
@@ -67,10 +68,14 @@ source .venv/bin/activate         # Windows: .venv\Scripts\activate
 # 3. Install dependencies
 pip install -r requirements.txt
 
-# 4. (Optional) Enable Claude — without this, the system runs in template-fallback mode
+# 4. (Optional) Enable an LLM — without this, the system runs in template-fallback mode
 cp .env.example .env
-# then edit .env and paste your ANTHROPIC_API_KEY
+# Edit .env and paste at least ONE of:
+#   - GEMINI_API_KEY     (recommended — free tier at https://aistudio.google.com/apikey)
+#   - ANTHROPIC_API_KEY  (paid)
 ```
+
+**Provider selection** at runtime: Gemini first if its key is set, then Anthropic, then template fallback. The `Recommendation.provider` field and the `logs/rag.log` audit trail record which provider served each request.
 
 The first run will download the `all-MiniLM-L6-v2` model (~80 MB) and build the local Chroma index from `data/knowledge_base/` (~1 second after the model is cached).
 
@@ -150,7 +155,7 @@ Citations: `cat_senior_care.md`, `enrichment_senior_pet.md`, `cat_indoor_enrichm
 
 ### New in this iteration
 - **RAG retrieval** over a 33-document curated knowledge base
-- **LLM generation** via Anthropic Claude with strict-JSON output, with a **deterministic template fallback** so the system runs without an API key
+- **LLM generation** via **Gemini (free tier)** or Anthropic Claude with strict-JSON output, with a **deterministic template fallback** so the system runs without any API key
 - **Hybrid recommender** — constraint engine validates + auto-shifts; ranker scores survivors
 - **Confidence scoring** with `high/medium/low` labels and adaptive UI guidance
 - **Medical-claim guardrail** — deny-list scrubber on all generated rationale
@@ -220,7 +225,7 @@ python evaluate.py           # 6-scenario harness, prints PASS/FAIL + confidence
 
 - **Logging.** Every `RAGEngine.generate()` call appends a JSON line to `logs/rag.log` with the query, top-K retrieval hits (snippet + score + source), final output, used_llm flag, and confidence. Easy to grep for recent failures.
 - **Medical guardrail.** A regex deny-list (`diagnose`, `prescribe`, `cure`, `dosage`) scrubs both the explanation and per-task rationales; flagged outputs get an "advisory only — consult your veterinarian" note appended.
-- **LLM-failure fallback.** If `ANTHROPIC_API_KEY` is missing or the API call raises any exception, the engine returns a sensible species/energy template grounded in the same retrieved citations. The `used_llm` flag on the `Recommendation` distinguishes the two paths.
+- **Multi-provider LLM with cascade.** The engine tries Gemini first (free tier), then Anthropic Claude (paid), then a deterministic species/energy template grounded in the retrieved citations. The `Recommendation.provider` field records which path served each request; `used_llm` is False only for the template fallback.
 - **Empty-retrieval fallback.** If the knowledge base has zero matches (e.g. exotic species not yet covered), the LLM is skipped and the template path runs anyway.
 - **Constraint engine is total.** Malformed slots, missing fields, and out-of-range times are caught and dropped with explicit `drop_reason` tags rather than crashing.
 
@@ -230,7 +235,7 @@ python evaluate.py           # 6-scenario harness, prints PASS/FAIL + confidence
 
 - **ChromaDB over Pinecone or FAISS.** Local persistent client = reproducible from `git clone` with no external account. Higher-level than FAISS (built-in metadata + filters), simpler than Weaviate Cloud.
 - **MiniLM-L6-v2 over larger models.** 384-d, ~80 MB, runs on CPU. Quality is sufficient for the small KB; using a larger embedder doesn't measurably improve top-5 results on this corpus.
-- **Claude with template fallback** instead of mandatory LLM. The rubric requires a reproducible setup; not every grader will have an API key.
+- **Gemini → Anthropic → template cascade** instead of mandatory LLM. Gemini's free tier means a grader without paid API access can still exercise the LLM path; Anthropic is a stretch option for higher-quality output; the template fallback means the system always runs.
 - **0.6/0.4 confidence weighting** chosen by inspection. A future iteration would calibrate against a labeled dataset.
 - **Per-pet generation** rather than household-level optimization. Joint optimization across pets adds complexity without clear value for a single-owner workflow.
 - **YAML frontmatter parsed manually** instead of pulling in PyYAML. Avoids a dependency for what is essentially `key: value` lines.

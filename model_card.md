@@ -13,7 +13,7 @@ This file answers the rubric reflection prompts: what the system does, who it's 
 Given an `Owner` (with `busy_times`) and a target `Pet` (species, age, energy, health notes), the system:
 
 1. Retrieves the 5 most semantically similar passages from a curated 33-document knowledge base.
-2. Asks Claude to propose 3–6 daily care tasks grounded in those passages, OR falls back to a deterministic species/energy template if no API key is set.
+2. Asks an LLM to propose 3–6 daily care tasks grounded in those passages — **Gemini first** (free tier), then Anthropic Claude (paid) if Gemini is unavailable, then a deterministic species/energy template if no key is set.
 3. Validates each proposed slot against the owner's busy windows and existing tasks; auto-shifts violators where possible.
 4. Ranks the survivors by `0.6 × cosine_similarity + 0.4 × constraint_satisfaction` and emits a `[0,1]` confidence with a `high/medium/low` label.
 5. Logs every generation as a JSON line to `logs/rag.log`.
@@ -78,8 +78,9 @@ The AI is fast at *fluent code* and slow at *correct boundaries*. I spent more t
   5. Rabbit ('other' species) fallback path — should still produce ≥2 valid slots.
   6. Adversarial: only 07:00–08:00 free — auto-shift must find the window.
 
-When run with `ANTHROPIC_API_KEY` set: average confidence ~0.70, used_llm=True for all scenarios.
-When run without an API key (template fallback): average confidence ~0.50, used_llm=False, all constraint-validation checks still pass.
+When run with `GEMINI_API_KEY` set (free tier): average confidence ~0.70, provider="gemini" for all scenarios.
+When run with only `ANTHROPIC_API_KEY` set: similar quality, provider="anthropic".
+When run without any API key (template fallback): average confidence ~0.50, provider="template", used_llm=False — all constraint-validation checks still pass.
 
 ## Confidence
 

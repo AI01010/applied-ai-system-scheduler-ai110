@@ -24,7 +24,7 @@ flowchart TD
         EMB[Embedder<br/>MiniLM 384-d]
         VS[ChromaStore<br/>persistent local]
         RET[Retriever<br/>top-K cosine]
-        ENG[RAGEngine<br/>Claude OR template]
+        ENG[RAGEngine<br/>Gemini > Anthropic > template]
         LOG[(logs/rag.log<br/>JSONL audit)]
     end
 
@@ -92,9 +92,12 @@ flowchart TD
 2. Clicking "Generate AI schedule" calls `feature_builder.build_query(owner, pet)` which produces a natural-language query embedding the relevant signals.
 3. On first run, `ChromaStore.ingest_knowledge_base()` loads all 33 markdown files, parses YAML frontmatter, chunks each by paragraph (≤1000 chars), embeds them with MiniLM, and upserts into a persistent local Chroma collection at `./data/chroma/`.
 4. `Retriever.top_k()` returns the 5 most-similar chunks via cosine similarity.
-5. `RAGEngine.generate()` either:
-   - Calls Anthropic Claude with the chunks as `<context>` and parses a strict-JSON response containing `proposed_tasks`, `explanation`, `citations`, OR
-   - Falls back to a deterministic species/energy template if no API key is set or the LLM call fails.
+5. `RAGEngine.generate()` cascades through providers:
+   - **Gemini** (`GEMINI_API_KEY`, free tier) — calls `gemini-2.0-flash` with the chunks as `<context>` and parses a strict-JSON response containing `proposed_tasks`, `explanation`, `citations`. Used by default when the key is set.
+   - **Anthropic Claude** (`ANTHROPIC_API_KEY`, paid) — same prompt + JSON schema, used if Gemini is unavailable.
+   - **Deterministic template** — falls back to a species/energy plan grounded in the retrieved citations if both LLMs are unavailable.
+
+   The `Recommendation.provider` field records which path served the request.
 6. The medical-claim guardrail scrubs any rationale that looks like medical advice and appends an "advisory only" warning.
 7. `recommender.constraint_engine.validate_slots()` partitions the proposed slots into `kept` and `dropped`, auto-shifting violators to the next valid 15-minute window.
 8. `recommender.ranker.rank_slots()` orders the survivors by `0.6 × avg_similarity + 0.4 × satisfied`.

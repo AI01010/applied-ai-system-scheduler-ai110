@@ -14,3 +14,7 @@ data/chroma/
 
 # Logs
 logs/
+
+# Local-only docs (presentation prep, scratch notes — never push)
+presentation_script.md
+.streamlit/secrets.toml

@@ -1,0 +1,18 @@
+# PawPal+ AI — Streamlit theme config
+# Warm earth palette inspired by 21st.dev / awwwards.com aesthetics:
+# generous whitespace, soft sage primary, terracotta accent, serif display.
+
+[theme]
+base = "light"
+primaryColor = "#2D5F3F"
+backgroundColor = "#FAF7F2"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#1F2937"
+font = "sans serif"
+
+[server]
+headless = true
+runOnSave = false
+
+[browser]
+gatherUsageStats = false

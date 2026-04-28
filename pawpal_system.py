@@ -44,6 +44,21 @@ class Pet:
         """Append a Task to this pet's task list."""
         self.tasks.append(task)
 
+    def has_duplicate(self, task: Task) -> bool:
+        """True if an identical task is already on this pet's calendar.
+
+        Two tasks count as duplicates when title, time, duration, priority,
+        and frequency all match — completion state and due_date are ignored.
+        """
+        return any(
+            t.title == task.title
+            and t.time == task.time
+            and t.duration_minutes == task.duration_minutes
+            and t.priority == task.priority
+            and t.frequency == task.frequency
+            for t in self.tasks
+        )
+
     def remove_task(self, task: Task):
         """Remove a Task from this pet's task list."""
         self.tasks.remove(task)

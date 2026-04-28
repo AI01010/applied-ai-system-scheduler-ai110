@@ -489,26 +489,52 @@ tab_setup, tab_schedule, tab_ai = st.tabs(["Setup", "Today's schedule", "AI reco
 
 # ─── TAB 1: SETUP ────────────────────────────────────────────────────────────
 with tab_setup:
-    # Owner edit
+    # Owner identity
     _section_header("Profile", "Owner")
     with st.container(border=True):
         with st.form("owner_form_edit"):
-            c1, c2, c3 = st.columns(3)
+            c1, c2 = st.columns(2)
             with c1:
                 owner_name = st.text_input("Name", value=owner.name)
             with c2:
                 contact = st.text_input("Contact", value=owner.contact_info)
-            with c3:
-                busy_text = st.text_input(
-                    "Busy hours",
-                    value=_busy_times_to_text(owner.busy_times),
-                    help="HH:MM-HH:MM, comma-separated",
-                )
-            if st.form_submit_button("Save changes"):
+            if st.form_submit_button("Save profile"):
                 owner.name = owner_name
                 owner.contact_info = contact
-                owner.busy_times = _parse_busy_times(busy_text)
-                st.success("Saved.")
+                st.success("Profile saved.")
+
+    # Busy hours — structured block-out UI
+    _section_header("Calendar", "Block out your busy hours",
+                    "The AI will avoid scheduling tasks inside these windows.")
+    with st.container(border=True):
+        if owner.busy_times:
+            for i, (start, end) in enumerate(list(owner.busy_times)):
+                bcol1, bcol2, bcol3 = st.columns([2, 4, 1])
+                with bcol1:
+                    st.markdown(f"**Block {i + 1}**")
+                with bcol2:
+                    st.markdown(f"`{start}` &nbsp;→&nbsp; `{end}`")
+                with bcol3:
+                    if st.button("Remove", key=f"rm_busy_{i}", type="secondary"):
+                        owner.busy_times.pop(i)
+                        st.rerun()
+        else:
+            st.caption("No busy windows blocked yet — your day is wide open.")
+
+        st.markdown("&nbsp;", unsafe_allow_html=True)
+
+        with st.form("add_busy_form", clear_on_submit=True):
+            ac1, ac2, ac3 = st.columns([2, 2, 1])
+            with ac1:
+                new_start = st.text_input("Start", value="09:00", placeholder="HH:MM")
+            with ac2:
+                new_end = st.text_input("End", value="17:00", placeholder="HH:MM")
+            with ac3:
+                st.markdown("&nbsp;")
+                add_block = st.form_submit_button("Add block")
+            if add_block and new_start and new_end:
+                owner.busy_times.append((new_start.strip(), new_end.strip()))
+                st.rerun()
 
     # Pets
     _section_header("Roster", "Your pets", "Add and manage the animals in your care.")
@@ -599,9 +625,16 @@ with tab_setup:
                         title=task_title, time=task_time,
                         duration_minutes=int(duration), priority=priority, frequency=frequency,
                     )
-                    next(p for p in owner.pets if p.name == target_pet).add_task(task)
-                    st.session_state.show_schedule = False
-                    st.success(f"'{task_title}' added to {target_pet}.")
+                    pet_target = next(p for p in owner.pets if p.name == target_pet)
+                    if pet_target.has_duplicate(task):
+                        st.warning(
+                            f"Skipped — {target_pet} already has an identical task "
+                            f"({task_title} at {task_time}, {duration} min, {priority}, {frequency})."
+                        )
+                    else:
+                        pet_target.add_task(task)
+                        st.session_state.show_schedule = False
+                        st.success(f"'{task_title}' added to {target_pet}.")
 
 
 # ─── TAB 2: TODAY'S SCHEDULE ─────────────────────────────────────────────────
@@ -778,7 +811,10 @@ with tab_ai:
             # Schedule table
             if result["ranked"]:
                 with st.container(border=True):
-                    st.markdown("**Recommended schedule** · constraint-validated, score-ranked")
+                    st.markdown(
+                        f"**Recommended schedule for {target_pet_name}** · "
+                        "constraint-validated, score-ranked"
+                    )
                     rows = [
                         {
                             "Time":     s.get("time", "—"),
@@ -793,20 +829,90 @@ with tab_ai:
                     ]
                     st.table(rows)
 
-                    if st.button(f"Add all kept tasks to {target_pet_name}",
-                                 type="primary", key="btn_add_all"):
-                        pet_obj = next(p for p in owner.pets if p.name == target_pet_name)
-                        for s in result["kept"]:
-                            pet_obj.add_task(Task(
+                    # ── Per-suggestion picker ────────────────────────────────
+                    st.markdown("**Pick which suggestions to add to the calendar**")
+
+                    pet_obj = next(p for p in owner.pets if p.name == target_pet_name)
+
+                    def _slot_label(s):
+                        return (
+                            f"{s.get('time', '?')} — {s.get('title', '?')} "
+                            f"({s.get('duration_minutes', 15)} min, {s.get('priority', 'medium')})"
+                        )
+
+                    label_to_slot = {_slot_label(s): s for s in result["ranked"]}
+                    all_labels = list(label_to_slot.keys())
+
+                    # Default: pre-select non-duplicates so the user can one-click add
+                    def _is_dup(s):
+                        return pet_obj.has_duplicate(Task(
+                            title=s.get("title", "AI task"),
+                            time=s.get("time", "12:00"),
+                            duration_minutes=int(s.get("duration_minutes", 15)),
+                            priority=s.get("priority", "medium"),
+                            frequency="daily",
+                        ))
+
+                    default_selection = [
+                        lbl for lbl, s in label_to_slot.items() if not _is_dup(s)
+                    ]
+
+                    chosen_labels = st.multiselect(
+                        "Select tasks",
+                        options=all_labels,
+                        default=default_selection,
+                        key=f"ai_slot_picker_{target_pet_name}",
+                        label_visibility="collapsed",
+                    )
+
+                    # Show duplicate warnings inline
+                    dup_labels = [lbl for lbl, s in label_to_slot.items() if _is_dup(s)]
+                    if dup_labels:
+                        st.caption(
+                            f"{len(dup_labels)} suggestion(s) already on {target_pet_name}'s "
+                            "calendar — unchecked by default."
+                        )
+
+                    bcol1, bcol2 = st.columns([1, 2])
+                    with bcol1:
+                        add_clicked = st.button(
+                            f"Add {len(chosen_labels)} selected",
+                            type="primary",
+                            key="btn_add_selected",
+                            disabled=len(chosen_labels) == 0,
+                        )
+                    with bcol2:
+                        if st.button("Select all", key="btn_select_all_slots"):
+                            st.session_state[f"ai_slot_picker_{target_pet_name}"] = all_labels
+                            st.rerun()
+
+                    if add_clicked:
+                        added = 0
+                        skipped_dup = 0
+                        for label in chosen_labels:
+                            s = label_to_slot[label]
+                            new_task = Task(
                                 title=s.get("title", "AI task"),
                                 time=s.get("time", "12:00"),
                                 duration_minutes=int(s.get("duration_minutes", 15)),
                                 priority=s.get("priority", "medium"),
                                 description=s.get("rationale", ""),
                                 frequency="daily",
-                            ))
-                        st.success(f"Added {len(result['kept'])} tasks to {target_pet_name}.")
-                        st.rerun()
+                            )
+                            if pet_obj.has_duplicate(new_task):
+                                skipped_dup += 1
+                                continue
+                            pet_obj.add_task(new_task)
+                            added += 1
+
+                        if added:
+                            st.success(f"Added {added} task(s) to {target_pet_name}.")
+                        if skipped_dup:
+                            st.warning(
+                                f"Skipped {skipped_dup} duplicate(s) — already on the calendar."
+                            )
+                        if added:
+                            st.rerun()
 
             # Dropped
             if result["dropped"]:

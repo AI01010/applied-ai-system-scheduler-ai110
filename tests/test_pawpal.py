@@ -95,6 +95,41 @@ def test_no_conflict_different_times():
     assert scheduler.detect_conflicts() == []
 
 
+def test_has_duplicate_detects_identical_task():
+    """has_duplicate() flags tasks where all schedulable fields match."""
+    pet = Pet(name="Mochi", species="dog", age=3)
+    pet.add_task(make_task("Walk", time="08:00", priority="high", frequency="daily"))
+
+    same = make_task("Walk", time="08:00", priority="high", frequency="daily")
+    assert pet.has_duplicate(same) is True
+
+
+def test_has_duplicate_ignores_completion_state():
+    """A duplicate is still a duplicate even if one task is marked done."""
+    pet = Pet(name="Mochi", species="dog", age=3)
+    done = make_task("Walk", time="08:00")
+    done.completed = True
+    pet.add_task(done)
+
+    candidate = make_task("Walk", time="08:00")
+    assert pet.has_duplicate(candidate) is True
+
+
+def test_has_duplicate_distinguishes_on_any_field():
+    """Different time, title, duration, priority, or frequency => not duplicate."""
+    pet = Pet(name="Mochi", species="dog", age=3)
+    pet.add_task(make_task("Walk", time="08:00", priority="high", frequency="daily"))
+
+    # Different time
+    assert pet.has_duplicate(make_task("Walk", time="09:00", priority="high", frequency="daily")) is False
+    # Different title
+    assert pet.has_duplicate(make_task("Run", time="08:00", priority="high", frequency="daily")) is False
+    # Different priority
+    assert pet.has_duplicate(make_task("Walk", time="08:00", priority="low", frequency="daily")) is False
+    # Different frequency
+    assert pet.has_duplicate(make_task("Walk", time="08:00", priority="high", frequency="weekly")) is False
+
+
 def test_filter_by_status_returns_incomplete():
     """filter_by_status(False) should only return incomplete tasks."""
     owner = Owner("Jordan")

@@ -11,6 +11,7 @@ Design language inspired by 21st.dev / awwwards.com:
 import os
 import streamlit as st
 from pawpal_system import Owner, Pet, Task, Scheduler
+from time_utils import parse_time, try_parse_time, format_time
 
 # ── Streamlit Cloud secrets bridge ────────────────────────────────────────────
 # st.secrets (TOML on Streamlit Cloud) doesn't auto-populate os.environ. Bridge
@@ -408,14 +409,32 @@ if "owner" not in st.session_state:
     st.session_state.owner = None
 if "show_schedule" not in st.session_state:
     st.session_state.show_schedule = False
+if "time_format" not in st.session_state:
+    st.session_state.time_format = "24h"   # "24h" | "12h"
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
+def _fmt():
+    """Current display format from session state."""
+    return st.session_state.get("time_format", "24h")
+
+
+def _t(hhmm):
+    """Format a canonical 'HH:MM' for display per current toggle."""
+    return format_time(hhmm, _fmt())
+
+
 def _busy_times_to_text(busy_times):
-    return ", ".join(f"{s}-{e}" for s, e in busy_times) if busy_times else ""
+    """Render busy windows for display, respecting the format toggle."""
+    return ", ".join(f"{_t(s)}-{_t(e)}" for s, e in busy_times) if busy_times else ""
 
 
 def _parse_busy_times(text):
+    """Parse a comma-separated 'start-end' busy-times string.
+
+    Each side accepts any format parse_time supports: '8:00', '08:00',
+    '8 AM', '8:30PM', '0830'. Malformed entries are silently skipped.
+    """
     out = []
     if not text:
         return out
@@ -424,7 +443,10 @@ def _parse_busy_times(text):
         if "-" not in chunk:
             continue
         start, _, end = chunk.partition("-")
-        out.append((start.strip(), end.strip()))
+        ps = try_parse_time(start.strip())
+        pe = try_parse_time(end.strip())
+        if ps and pe:
+            out.append((ps, pe))
     return out
 
 
@@ -452,7 +474,11 @@ if _existing is None:
                 busy_text = st.text_input(
                     "Busy hours",
                     value="09:00-17:00",
-                    help="Format: HH:MM-HH:MM, comma-separated. Example: 09:00-17:00, 19:00-20:00",
+                    help=(
+                        "Format: start-end, comma-separated. Each side accepts "
+                        "24-hour or 12-hour AM/PM. Examples: '09:00-17:00', "
+                        "'9 AM-5 PM, 7 PM-8 PM'."
+                    ),
                 )
             if st.form_submit_button("Save and continue") and owner_name:
                 st.session_state.owner = Owner(
@@ -503,6 +529,26 @@ with tab_setup:
                 owner.contact_info = contact
                 st.success("Profile saved.")
 
+    # Display preference (24h vs 12h AM/PM)
+    fmt_col1, fmt_col2 = st.columns([1, 3])
+    with fmt_col1:
+        chosen_fmt = st.radio(
+            "Show times as",
+            options=["24-hour", "12-hour AM/PM"],
+            index=0 if st.session_state.time_format == "24h" else 1,
+            horizontal=True,
+            key="time_format_radio",
+        )
+        new_fmt = "24h" if chosen_fmt == "24-hour" else "12h"
+        if new_fmt != st.session_state.time_format:
+            st.session_state.time_format = new_fmt
+            st.rerun()
+    with fmt_col2:
+        st.caption(
+            "Inputs accept either format — `8:00`, `08:00`, `8 AM`, `8:30 PM`, "
+            "or `0830` all work. Stored canonically as 24-hour."
+        )
+
     # Busy hours — structured block-out UI
     _section_header("Calendar", "Block out your busy hours",
                     "The AI will avoid scheduling tasks inside these windows.")
@@ -513,7 +559,7 @@ with tab_setup:
                 with bcol1:
                     st.markdown(f"**Block {i + 1}**")
                 with bcol2:
-                    st.markdown(f"`{start}` &nbsp;→&nbsp; `{end}`")
+                    st.markdown(f"`{_t(start)}` &nbsp;→&nbsp; `{_t(end)}`")
                 with bcol3:
                     if st.button("Remove", key=f"rm_busy_{i}", type="secondary"):
                         owner.busy_times.pop(i)
@@ -525,16 +571,26 @@ with tab_setup:
 
         with st.form("add_busy_form", clear_on_submit=True):
             ac1, ac2, ac3 = st.columns([2, 2, 1])
+            default_start = "9:00 AM" if _fmt() == "12h" else "09:00"
+            default_end   = "5:00 PM" if _fmt() == "12h" else "17:00"
             with ac1:
-                new_start = st.text_input("Start", value="09:00", placeholder="HH:MM")
+                new_start = st.text_input("Start", value=default_start,
+                                          placeholder="e.g. 8:00, 8 AM, 0830")
             with ac2:
-                new_end = st.text_input("End", value="17:00", placeholder="HH:MM")
+                new_end = st.text_input("End", value=default_end,
+                                        placeholder="e.g. 17:00, 5 PM")
             with ac3:
                 st.markdown("&nbsp;")
                 add_block = st.form_submit_button("Add block")
             if add_block and new_start and new_end:
-                owner.busy_times.append((new_start.strip(), new_end.strip()))
-                st.rerun()
+                ps = try_parse_time(new_start)
+                pe = try_parse_time(new_end)
+                if ps and pe:
+                    owner.busy_times.append((ps, pe))
+                    st.rerun()
+                else:
+                    bad = new_start if not ps else new_end
+                    st.error(f"Could not parse `{bad}` as a time.")
 
     # Pets
     _section_header("Roster", "Your pets", "Add and manage the animals in your care.")
@@ -612,29 +668,37 @@ with tab_setup:
         else:
             with st.form("task_form"):
                 c1, c2 = st.columns(2)
+                default_task_time = "8:00 AM" if _fmt() == "12h" else "08:00"
                 with c1:
                     task_title = st.text_input("Task title", value="Morning walk")
-                    task_time = st.text_input("Time (HH:MM)", value="08:00")
+                    task_time_raw = st.text_input(
+                        "Time", value=default_task_time,
+                        placeholder="e.g. 08:00 or 8:00 AM",
+                    )
                     duration = st.number_input("Duration (min)", min_value=1, max_value=240, value=20)
                 with c2:
                     priority = st.selectbox("Priority", ["low", "medium", "high"], index=2)
                     frequency = st.selectbox("Frequency", ["once", "daily", "weekly"])
                     target_pet = st.selectbox("Assign to", [p.name for p in owner.pets])
                 if st.form_submit_button("Add task") and task_title:
-                    task = Task(
-                        title=task_title, time=task_time,
-                        duration_minutes=int(duration), priority=priority, frequency=frequency,
-                    )
-                    pet_target = next(p for p in owner.pets if p.name == target_pet)
-                    if pet_target.has_duplicate(task):
-                        st.warning(
-                            f"Skipped — {target_pet} already has an identical task "
-                            f"({task_title} at {task_time}, {duration} min, {priority}, {frequency})."
-                        )
+                    normalized = try_parse_time(task_time_raw)
+                    if not normalized:
+                        st.error(f"Could not parse `{task_time_raw}` as a time.")
                     else:
-                        pet_target.add_task(task)
-                        st.session_state.show_schedule = False
-                        st.success(f"'{task_title}' added to {target_pet}.")
+                        task = Task(
+                            title=task_title, time=normalized,
+                            duration_minutes=int(duration), priority=priority, frequency=frequency,
+                        )
+                        pet_target = next(p for p in owner.pets if p.name == target_pet)
+                        if pet_target.has_duplicate(task):
+                            st.warning(
+                                f"Skipped — {target_pet} already has an identical task "
+                                f"({task_title} at {_t(normalized)}, {duration} min, {priority}, {frequency})."
+                            )
+                        else:
+                            pet_target.add_task(task)
+                            st.session_state.show_schedule = False
+                            st.success(f"'{task_title}' added to {target_pet} at {_t(normalized)}.")
 
 
 # ─── TAB 2: TODAY'S SCHEDULE ─────────────────────────────────────────────────
@@ -685,7 +749,7 @@ with tab_schedule:
                 if filtered:
                     rows = [
                         {
-                            "Time":     t.time,
+                            "Time":     _t(t.time),
                             "Pet":      pn,
                             "Task":     t.title,
                             "Duration": f"{t.duration_minutes} min",
@@ -705,7 +769,7 @@ with tab_schedule:
                 all_task_pairs = scheduler.get_tasks_with_pets()
 
                 def _label(task, pet_name):
-                    return f"{task.time} — {task.title} ({pet_name})"
+                    return f"{_t(task.time)} — {task.title} ({pet_name})"
 
                 acol1, acol2 = st.columns(2)
                 with acol1:
@@ -817,7 +881,7 @@ with tab_ai:
                     )
                     rows = [
                         {
-                            "Time":     s.get("time", "—"),
+                            "Time":     _t(s.get("time", "")) or "—",
                             "Task":     s.get("title", "—"),
                             "Duration": f"{s.get('duration_minutes', 15)} min",
                             "Priority": s.get("priority", "medium"),
@@ -836,7 +900,7 @@ with tab_ai:
 
                     def _slot_label(s):
                         return (
-                            f"{s.get('time', '?')} — {s.get('title', '?')} "
+                            f"{_t(s.get('time', '?'))} — {s.get('title', '?')} "
                             f"({s.get('duration_minutes', 15)} min, {s.get('priority', 'medium')})"
                         )
 
@@ -919,7 +983,7 @@ with tab_ai:
                 with st.expander(f"Dropped slots ({len(result['dropped'])})"):
                     for d in result["dropped"]:
                         reason = d.get("drop_reason", "unknown")
-                        st.warning(f"{d.get('time', '?')} — {d.get('title', '?')} ({reason})")
+                        st.warning(f"{_t(d.get('time', '?'))} — {d.get('title', '?')} ({reason})")
 
             # Citations
             if result["citations"]:

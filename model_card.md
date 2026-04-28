@@ -52,9 +52,11 @@ When designing the constraint engine, I planned to use exact-match time comparis
 
 This is now `recommender/constraint_engine.py:overlaps()`. I wouldn't have arrived at it as cleanly on my own.
 
+It also suggested all-MiniLM-L6-v2 model for embedding, which was a good call given the small KB and the desire to run on CPU without external dependencies. See https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2 for benchmarks and docs.
+
 ### One instance where AI's suggestion was flawed
 
-When generating the knowledge base, Claude initially suggested including specific medication dosages ("give 1mg/kg of meloxicam for arthritic seniors") in the senior-care doc. I rejected this — even though those numbers are findable in pet-care literature, embedding them in a system that surfaces them as citations creates a non-trivial risk of an owner self-medicating. I rewrote those passages to defer all dosing to a vet and added the medical-claim deny-list scrubber as a defense-in-depth measure.
+When generating the knowledge base, Claude initially suggested including specific medication dosages ("give 1mg/kg of meloxicam for arthritic seniors") in the senior-care doc. I rejected this, even though those numbers are findable in pet-care literature, embedding them in a system that surfaces them as citations creates a non-trivial risk of an owner self-medicating. I rewrote those passages to point all dosing to a vet and added the medical-claim deny-list scrubber as a defense-in-depth measure.
 
 The lesson: AI tools optimize for "completeness of answer" by default. Safety-critical applications need the human to draw the boundary on what *should* be in the system, not just what *can* be.
 
@@ -84,4 +86,4 @@ When run without any API key (template fallback): average confidence ~0.50, prov
 
 ## Confidence
 
-★★★★☆ — the core retrieval, constraint validation, and ranking are well-tested and behaviorally robust. The remaining uncertainty is around LLM output variance: Claude occasionally produces tasks whose rationale doesn't faithfully cite a source, which the citation backfill in `rag_engine.py` masks but doesn't fully fix. A future iteration would add a second LLM pass that scores rationale–context faithfulness explicitly.
+★★★★☆ — the core retrieval, constraint validation, and ranking are well-tested and behaviorally robust. The remaining uncertainty is around LLM output variance: Claude occasionally produces tasks whose rationale doesn't faithfully cite a source, which the citation backfill in `rag_engine.py` masks but doesn't fully fix. A future iteration would add a second LLM pass that scores rationale–context faithfulness explicitly, like an agent.

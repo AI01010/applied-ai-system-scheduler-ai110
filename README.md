@@ -234,7 +234,7 @@ python evaluate.py           # 6-scenario harness, prints PASS/FAIL + confidence
 ## Design decisions and tradeoffs
 
 - **ChromaDB over Pinecone or FAISS.** Local persistent client = reproducible from `git clone` with no external account. Higher-level than FAISS (built-in metadata + filters), simpler than Weaviate Cloud.
-- **MiniLM-L6-v2 over larger models.** 384-d, ~80 MB, runs on CPU. Quality is sufficient for the small KB; using a larger embedder doesn't measurably improve top-5 results on this corpus.
+- **MiniLM-L6-v2 over larger models.** 384-d, ~80 MB, runs on CPU. Quality is sufficient for the small KB; using a larger embedder doesn't measurably improve top-5 results on this corpus. See https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2 for benchmarks and docs.
 - **Gemini → Anthropic → template cascade** instead of mandatory LLM. Gemini's free tier means a grader without paid API access can still exercise the LLM path; Anthropic is a stretch option for higher-quality output; the template fallback means the system always runs.
 - **0.6/0.4 confidence weighting** chosen by inspection. A future iteration would calibrate against a labeled dataset.
 - **Per-pet generation** rather than household-level optimization. Joint optimization across pets adds complexity without clear value for a single-owner workflow.

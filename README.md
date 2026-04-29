@@ -1,13 +1,12 @@
 # PawPal+ AI
 
-note: recording did not work, will be added soon!
 
 > An intelligent pet-care recommender that combines a deterministic scheduler with a Retrieval-Augmented Generation (RAG) layer and a hybrid constraint-aware ranker.
 
 **Base project:** [PawPal+ (Module 2)](#base-project) — a Streamlit pet-care scheduler with `Owner / Pet / Task / Scheduler` classes, sort/filter/conflict detection, and recurring tasks. This repo extends it into a full applied AI system per the Module 5 final project rubric.
                   Based on: https://github.com/AI01010/ai110-module2show-pawpal-starter
 
-**Loom walkthrough:** _add link here before submission_ — `https://www.loom.com/share/<your-video-id>`
+**Loom walkthrough:**  note: recording did not work, will be added soon!
 
 ---
 

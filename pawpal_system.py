@@ -1,8 +1,55 @@
-"""PawPal+ backend logic: Owner, Pet, Task, Scheduler."""
+"""PawPal+ backend logic: Owner, Pet, Task, Scheduler, BusyBlock."""
 
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Optional
+
+
+# Day-of-week ordering used by BusyBlock.days (Python's date.weekday() convention).
+_WEEKDAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+
+@dataclass
+class BusyBlock:
+    """A single busy window on the owner's calendar.
+
+    The block is active on a given date when one of these is true:
+      - ``on_date`` is set and equals the target date (one-time block), OR
+      - ``days`` is empty (every day), OR
+      - ``target_date.weekday()`` is in ``days``
+
+    ``on_date`` always wins over ``days`` if both are set.
+    """
+
+    start: str                              # "HH:MM"
+    end: str                                # "HH:MM"
+    days: list = field(default_factory=list)   # 0=Mon..6=Sun, empty = every day
+    on_date: Optional[date] = None             # one-time only
+
+    def active_on(self, target: date) -> bool:
+        """True if this block applies to the given calendar date."""
+        if self.on_date is not None:
+            return self.on_date == target
+        if not self.days:
+            return True
+        return target.weekday() in self.days
+
+    def label(self) -> str:
+        """Short human-readable description of when this block fires."""
+        if self.on_date is not None:
+            return self.on_date.strftime("%a, %b %d, %Y")
+        if not self.days:
+            return "Every day"
+        sorted_days = sorted(self.days)
+        if sorted_days == [0, 1, 2, 3, 4]:
+            return "Weekdays (Mon–Fri)"
+        if sorted_days == [5, 6]:
+            return "Weekends (Sat–Sun)"
+        if sorted_days == [0, 1, 2, 3, 4, 5, 6]:
+            return "Every day"
+        if len(sorted_days) == 1:
+            return f"Every {_WEEKDAY_NAMES[sorted_days[0]]}"
+        return ", ".join(_WEEKDAY_NAMES[d] for d in sorted_days)
 
 
 @dataclass
@@ -74,9 +121,26 @@ class Owner:
     def __init__(self, name: str, contact_info: str = "", busy_times: Optional[list] = None):
         self.name = name
         self.contact_info = contact_info
-        # list of (start, end) HH:MM tuples — used by the AI recommender's constraint engine
-        self.busy_times: list[tuple[str, str]] = busy_times or []
+        # Calendar blocks. Each entry is a BusyBlock with start/end times plus
+        # day-of-week or specific-date scoping. Legacy tuple inputs are
+        # auto-promoted to "every day" BusyBlocks for backward compat.
+        self.busy_times: list[BusyBlock] = []
+        if busy_times:
+            for entry in busy_times:
+                if isinstance(entry, BusyBlock):
+                    self.busy_times.append(entry)
+                elif isinstance(entry, tuple) and len(entry) == 2:
+                    self.busy_times.append(BusyBlock(start=entry[0], end=entry[1]))
         self.pets: list[Pet] = []
+
+    def active_busy_times(self, target_date: Optional[date] = None) -> list:
+        """Return ``[(start, end), ...]`` tuples of blocks active on ``target_date``.
+
+        Defaults to today. This is the shape the recommender's constraint
+        engine consumes — keeps that layer agnostic to recurrence.
+        """
+        target = target_date or date.today()
+        return [(b.start, b.end) for b in self.busy_times if b.active_on(target)]
 
     def add_pet(self, pet: Pet):
         """Add a Pet to the owner's roster."""

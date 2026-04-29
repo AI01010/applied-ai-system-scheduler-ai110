@@ -2,7 +2,7 @@
 
 from datetime import date, timedelta
 import pytest
-from pawpal_system import Task, Pet, Owner, Scheduler
+from pawpal_system import Task, Pet, Owner, Scheduler, BusyBlock
 
 
 # --- Helpers ---
@@ -128,6 +128,88 @@ def test_has_duplicate_distinguishes_on_any_field():
     assert pet.has_duplicate(make_task("Walk", time="08:00", priority="low", frequency="daily")) is False
     # Different frequency
     assert pet.has_duplicate(make_task("Walk", time="08:00", priority="high", frequency="weekly")) is False
+
+
+# --- BusyBlock + Owner.active_busy_times tests ------------------------------
+
+def test_busyblock_every_day_when_days_empty():
+    """An empty days list means the block applies to every weekday."""
+    block = BusyBlock(start="09:00", end="17:00")
+    monday    = date(2026, 4, 27)   # Monday
+    saturday  = date(2026, 5, 2)    # Saturday
+    assert block.active_on(monday) is True
+    assert block.active_on(saturday) is True
+
+
+def test_busyblock_weekday_filter():
+    """A block with days=[0] (Monday only) fires only on Mondays."""
+    block = BusyBlock(start="09:00", end="17:00", days=[0])
+    monday    = date(2026, 4, 27)
+    tuesday   = date(2026, 4, 28)
+    next_mon  = date(2026, 5, 4)
+    assert block.active_on(monday) is True
+    assert block.active_on(tuesday) is False
+    assert block.active_on(next_mon) is True
+
+
+def test_busyblock_weekdays_only():
+    """days=[0..4] is Mon-Fri."""
+    block = BusyBlock(start="09:00", end="17:00", days=[0, 1, 2, 3, 4])
+    assert block.active_on(date(2026, 4, 27)) is True   # Mon
+    assert block.active_on(date(2026, 5, 1))  is True   # Fri
+    assert block.active_on(date(2026, 5, 2))  is False  # Sat
+
+
+def test_busyblock_specific_date_overrides_days():
+    """on_date wins; even if days is set, only that date matches."""
+    target = date(2026, 5, 4)
+    block = BusyBlock(start="14:00", end="15:00", days=[0, 1, 2], on_date=target)
+    assert block.active_on(target) is True
+    assert block.active_on(date(2026, 5, 5)) is False
+
+
+def test_busyblock_label_human_readable():
+    """label() formats common cases nicely."""
+    assert BusyBlock("09:00", "17:00").label() == "Every day"
+    assert BusyBlock("09:00", "17:00", days=[0, 1, 2, 3, 4]).label() == "Weekdays (Mon–Fri)"
+    assert BusyBlock("09:00", "17:00", days=[5, 6]).label() == "Weekends (Sat–Sun)"
+    assert BusyBlock("09:00", "17:00", days=[0]).label() == "Every Mon"
+    assert BusyBlock("09:00", "17:00", days=[1, 3]).label() == "Tue, Thu"
+    one_off = BusyBlock("14:00", "15:00", on_date=date(2026, 5, 4))
+    assert "May 04" in one_off.label() and "Mon" in one_off.label()
+
+
+def test_owner_active_busy_times_filters_by_date():
+    """active_busy_times collapses BusyBlocks into (start,end) tuples for the target."""
+    owner = Owner("Jordan")
+    owner.busy_times.append(BusyBlock("09:00", "17:00"))                         # every day
+    owner.busy_times.append(BusyBlock("14:00", "15:00", days=[0]))               # Mondays
+    owner.busy_times.append(BusyBlock("12:00", "13:00", on_date=date(2026, 5, 4)))  # one-time
+
+    monday_may4 = date(2026, 5, 4)
+    sat_may2    = date(2026, 5, 2)
+
+    mon_blocks = owner.active_busy_times(monday_may4)
+    sat_blocks = owner.active_busy_times(sat_may2)
+
+    assert ("09:00", "17:00") in mon_blocks
+    assert ("14:00", "15:00") in mon_blocks   # Monday weekly
+    assert ("12:00", "13:00") in mon_blocks   # one-time on this exact Monday
+    assert len(mon_blocks) == 3
+
+    assert sat_blocks == [("09:00", "17:00")]   # only the every-day block
+
+
+def test_owner_legacy_tuple_input_still_works():
+    """Owner(busy_times=[(s,e), ...]) is auto-promoted to BusyBlock(every day) for backward compat."""
+    owner = Owner("Jordan", busy_times=[("09:00", "17:00")])
+    assert len(owner.busy_times) == 1
+    assert isinstance(owner.busy_times[0], BusyBlock)
+    assert owner.active_busy_times(date(2026, 4, 27)) == [("09:00", "17:00")]
+    assert owner.active_busy_times(date(2026, 5, 2))  == [("09:00", "17:00")]
+
+
+# -----------------------------------------------------------------------------
 
 
 def test_filter_by_status_returns_incomplete():

@@ -104,7 +104,7 @@ def scenario_high_energy_dog_busy_owner() -> Scenario:
         owner=owner,
         target_pet_name="Rex",
         checks=[
-            check_no_busy_overlap(owner.busy_times),
+            check_no_busy_overlap(owner.active_busy_times()),
             check_min_kept(3),
         ],
     )
@@ -120,7 +120,7 @@ def scenario_senior_cat() -> Scenario:
         owner=owner,
         target_pet_name="Misty",
         checks=[
-            check_no_busy_overlap(owner.busy_times),
+            check_no_busy_overlap(owner.active_busy_times()),
             check_min_kept(2),
         ],
     )
@@ -138,7 +138,7 @@ def scenario_existing_task_conflict() -> Scenario:
         owner=owner,
         target_pet_name="Bella",
         checks=[
-            check_no_busy_overlap(owner.busy_times),
+            check_no_busy_overlap(owner.active_busy_times()),
             check_min_kept(1),
         ],
     )
@@ -168,7 +168,7 @@ def scenario_other_species() -> Scenario:
         owner=owner,
         target_pet_name="Hopper",
         checks=[
-            check_no_busy_overlap(owner.busy_times),
+            check_no_busy_overlap(owner.active_busy_times()),
             check_min_kept(2),
         ],
     )
@@ -184,7 +184,7 @@ def scenario_full_busy_window() -> Scenario:
         owner=owner,
         target_pet_name="Buddy",
         checks=[
-            check_no_busy_overlap(owner.busy_times),
+            check_no_busy_overlap(owner.active_busy_times()),
         ],
     )
 
@@ -197,7 +197,7 @@ def run_scenario(engine: RAGEngine, scenario: Scenario) -> dict:
     rec = engine.generate(scenario.owner, pet, k=5)
     result = apply_recommendation(
         rec,
-        busy_times=scenario.owner.busy_times,
+        busy_times=scenario.owner.active_busy_times(),
         existing_tasks=pet.tasks,
     )
     return result

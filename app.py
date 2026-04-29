@@ -10,8 +10,11 @@ Design language inspired by 21st.dev / awwwards.com:
 
 import os
 import streamlit as st
-from pawpal_system import Owner, Pet, Task, Scheduler
+from datetime import date, timedelta
+from pawpal_system import Owner, Pet, Task, Scheduler, BusyBlock
 from time_utils import parse_time, try_parse_time, format_time
+
+_WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 # ── Streamlit Cloud secrets bridge ────────────────────────────────────────────
 # st.secrets (TOML on Streamlit Cloud) doesn't auto-populate os.environ. Bridge
@@ -389,7 +392,7 @@ hr { border-color: var(--border); margin: 2.5rem 0 !important; }
 # ── Hero ─────────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="hero">
-  <span class="eyebrow">PawPal+ AI · Module 5 Final</span>
+  <span class="eyebrow">PawPal+ AI</span>
   <h1>Care that <em>thinks</em> with you,<br/>not for you.</h1>
   <p class="tagline">
     A retrieval-augmented pet care assistant. Schedules grounded in 33 curated guides,
@@ -425,12 +428,17 @@ def _t(hhmm):
 
 
 def _busy_times_to_text(busy_times):
-    """Render busy windows for display, respecting the format toggle."""
-    return ", ".join(f"{_t(s)}-{_t(e)}" for s, e in busy_times) if busy_times else ""
+    """Render every-day busy windows as a comma-separated string for the input field."""
+    parts = [
+        f"{_t(b.start)}-{_t(b.end)}"
+        for b in busy_times
+        if not b.days and b.on_date is None
+    ]
+    return ", ".join(parts) if parts else ""
 
 
 def _parse_busy_times(text):
-    """Parse a comma-separated 'start-end' busy-times string.
+    """Parse a comma-separated 'start-end' string into BusyBlock(every-day) instances.
 
     Each side accepts any format parse_time supports: '8:00', '08:00',
     '8 AM', '8:30PM', '0830'. Malformed entries are silently skipped.
@@ -446,7 +454,7 @@ def _parse_busy_times(text):
         ps = try_parse_time(start.strip())
         pe = try_parse_time(end.strip())
         if ps and pe:
-            out.append((ps, pe))
+            out.append(BusyBlock(start=ps, end=pe))
     return out
 
 
@@ -549,18 +557,28 @@ with tab_setup:
             "or `0830` all work. Stored canonically as 24-hour."
         )
 
-    # Busy hours — structured block-out UI
-    _section_header("Calendar", "Block out your busy hours",
-                    "The AI will avoid scheduling tasks inside these windows.")
+    # Busy hours — full calendar block-out UI
+    _section_header("Calendar", "Block out your schedule",
+                    "Add windows when you're unavailable. Every day, specific weekdays, "
+                    "weekends only, or one-off dates — the AI will avoid scheduling inside.")
     with st.container(border=True):
         if owner.busy_times:
-            for i, (start, end) in enumerate(list(owner.busy_times)):
-                bcol1, bcol2, bcol3 = st.columns([2, 4, 1])
+            for i, b in enumerate(list(owner.busy_times)):
+                bcol1, bcol2, bcol3, bcol4 = st.columns([3, 2, 3, 1])
                 with bcol1:
-                    st.markdown(f"**Block {i + 1}**")
+                    st.markdown(f"**{b.label()}**")
                 with bcol2:
-                    st.markdown(f"`{_t(start)}` &nbsp;→&nbsp; `{_t(end)}`")
+                    st.markdown(f"`{_t(b.start)}` &nbsp;→&nbsp; `{_t(b.end)}`")
                 with bcol3:
+                    today_active = b.active_on(date.today())
+                    badge_color = "var(--primary)" if today_active else "var(--muted)"
+                    badge_text = "Active today" if today_active else "Not today"
+                    st.markdown(
+                        f'<span style="color:{badge_color};font-size:0.82rem;'
+                        f'font-weight:500;">● {badge_text}</span>',
+                        unsafe_allow_html=True,
+                    )
+                with bcol4:
                     if st.button("Remove", key=f"rm_busy_{i}", type="secondary"):
                         owner.busy_times.pop(i)
                         st.rerun()
@@ -569,8 +587,11 @@ with tab_setup:
 
         st.markdown("&nbsp;", unsafe_allow_html=True)
 
+        # ── Add-block form with recurrence ───────────────────────────────────
+        st.markdown("**Add a busy window**")
         with st.form("add_busy_form", clear_on_submit=True):
-            ac1, ac2, ac3 = st.columns([2, 2, 1])
+            # Row 1: time range
+            ac1, ac2 = st.columns(2)
             default_start = "9:00 AM" if _fmt() == "12h" else "09:00"
             default_end   = "5:00 PM" if _fmt() == "12h" else "17:00"
             with ac1:
@@ -579,18 +600,62 @@ with tab_setup:
             with ac2:
                 new_end = st.text_input("End", value=default_end,
                                         placeholder="e.g. 17:00, 5 PM")
-            with ac3:
-                st.markdown("&nbsp;")
-                add_block = st.form_submit_button("Add block")
+
+            # Row 2: recurrence mode
+            mode = st.selectbox(
+                "Repeats",
+                options=[
+                    "Every day",
+                    "Weekdays only (Mon–Fri)",
+                    "Weekends only (Sat–Sun)",
+                    "Custom weekdays",
+                    "One specific date",
+                ],
+                index=0,
+            )
+
+            # Row 3: contextual inputs
+            picked_days: list = []
+            picked_date = None
+
+            if mode == "Custom weekdays":
+                day_cols = st.columns(7)
+                for i, label in enumerate(_WEEKDAY_LABELS):
+                    with day_cols[i]:
+                        if st.checkbox(label, key=f"day_chk_{i}"):
+                            picked_days.append(i)
+            elif mode == "One specific date":
+                picked_date = st.date_input("Date", value=date.today())
+
+            add_block = st.form_submit_button("Add block")
+
             if add_block and new_start and new_end:
                 ps = try_parse_time(new_start)
                 pe = try_parse_time(new_end)
-                if ps and pe:
-                    owner.busy_times.append((ps, pe))
-                    st.rerun()
-                else:
+                if not (ps and pe):
                     bad = new_start if not ps else new_end
                     st.error(f"Could not parse `{bad}` as a time.")
+                else:
+                    days_arg: list = []
+                    on_date_arg = None
+                    if mode == "Weekdays only (Mon–Fri)":
+                        days_arg = [0, 1, 2, 3, 4]
+                    elif mode == "Weekends only (Sat–Sun)":
+                        days_arg = [5, 6]
+                    elif mode == "Custom weekdays":
+                        days_arg = picked_days
+                        if not days_arg:
+                            st.error("Pick at least one weekday for a custom recurrence.")
+                            days_arg = None  # type: ignore
+                    elif mode == "One specific date":
+                        on_date_arg = picked_date
+
+                    if days_arg is not None:
+                        owner.busy_times.append(BusyBlock(
+                            start=ps, end=pe,
+                            days=days_arg, on_date=on_date_arg,
+                        ))
+                        st.rerun()
 
     # Pets
     _section_header("Roster", "Your pets", "Add and manage the animals in your care.")
@@ -820,11 +885,32 @@ with tab_ai:
             st.info("Add a pet on the Setup tab to enable AI recommendations.")
     else:
         with st.container(border=True):
-            target_pet_name = st.selectbox(
-                "Generate AI schedule for",
-                [p.name for p in owner.pets],
-                key="ai_target_pet",
-            )
+            tcol1, tcol2 = st.columns(2)
+            with tcol1:
+                target_pet_name = st.selectbox(
+                    "Generate AI schedule for",
+                    [p.name for p in owner.pets],
+                    key="ai_target_pet",
+                )
+            with tcol2:
+                target_date = st.date_input(
+                    "Plan for date",
+                    value=date.today(),
+                    help="The AI uses your busy windows that are active on this date.",
+                )
+
+            # Show which busy windows will apply on the target date
+            active = owner.active_busy_times(target_date)
+            if active:
+                weekday = _WEEKDAY_LABELS[target_date.weekday()]
+                summary = ", ".join(f"{_t(s)}–{_t(e)}" for s, e in active)
+                st.caption(
+                    f"Active busy windows on {weekday}, {target_date.strftime('%b %d')}: {summary}"
+                )
+            else:
+                st.caption(
+                    f"No busy windows on {target_date.strftime('%a, %b %d')} — full day open."
+                )
 
             if st.button("Generate AI schedule", type="primary"):
                 with st.spinner("Indexing knowledge base, retrieving context, generating..."):
@@ -840,7 +926,7 @@ with tab_ai:
                         rec = engine.generate(owner, pet_obj, k=5)
                         result = apply_recommendation(
                             rec,
-                            busy_times=owner.busy_times,
+                            busy_times=owner.active_busy_times(target_date),
                             existing_tasks=pet_obj.tasks,
                         )
                         st.session_state["last_ai_result"] = result
@@ -1003,6 +1089,6 @@ with tab_ai:
 st.markdown("""
 <div class="footer">
   <div class="brand">PawPal+ AI</div>
-  <div>Module 5 final · Applied AI System · Advisory only — not a substitute for veterinary care.</div>
+  <div>Applied AI System · Advisory only — not a substitute for veterinary care.</div>
 </div>
 """, unsafe_allow_html=True)

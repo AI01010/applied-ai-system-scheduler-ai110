@@ -7,12 +7,27 @@ species, age, energy, health notes, and the owner's existing schedule shape.
 
 from __future__ import annotations
 
+from datetime import date
 
-def _format_busy_times(busy_times) -> str:
-    """Render a list of (start, end) tuples as 'HH:MM-HH:MM, HH:MM-HH:MM'."""
-    if not busy_times:
+
+def _coerce_busy_pairs(busy_entries) -> list:
+    """Accept either ``[(start, end), ...]`` tuples OR ``[BusyBlock, ...]`` and
+    return a flat list of ``(start, end)`` tuples. Keeps the formatter loose so
+    legacy callers keep working alongside the new BusyBlock data model."""
+    pairs = []
+    for entry in busy_entries or []:
+        if hasattr(entry, "start") and hasattr(entry, "end"):
+            pairs.append((entry.start, entry.end))
+        elif isinstance(entry, tuple) and len(entry) == 2:
+            pairs.append((entry[0], entry[1]))
+    return pairs
+
+
+def _format_busy_times(busy_pairs) -> str:
+    """Render ``[(start, end), ...]`` tuples as 'HH:MM-HH:MM, HH:MM-HH:MM'."""
+    if not busy_pairs:
         return "no fixed busy times"
-    return ", ".join(f"{start}-{end}" for start, end in busy_times)
+    return ", ".join(f"{start}-{end}" for start, end in busy_pairs)
 
 
 def _format_existing_tasks(tasks) -> str:
@@ -27,13 +42,13 @@ def _format_existing_tasks(tasks) -> str:
     return ", ".join(parts)
 
 
-def build_query(owner, pet) -> str:
+def build_query(owner, pet, target_date=None) -> str:
     """Turn an Owner+Pet into a natural-language search query.
 
-    Example output:
-        "Daily care schedule for a 3-year-old high-energy dog named Mochi.
-         Owner busy 09:00-17:00. Existing tasks: morning walk at 08:00,
-         feeding at 18:00. Health notes: none."
+    If the owner exposes ``active_busy_times(target_date)`` (the BusyBlock-aware
+    Owner), the query reflects which busy windows actually fire on the target
+    date. Otherwise it falls back to whatever ``owner.busy_times`` looks like —
+    plain tuples or BusyBlocks — using ``_coerce_busy_pairs``.
     """
     name = getattr(pet, "name", "the pet")
     species = getattr(pet, "species", "pet")
@@ -41,11 +56,16 @@ def build_query(owner, pet) -> str:
     energy = getattr(pet, "energy", "medium")
     health = (getattr(pet, "health_notes", "") or "").strip() or "none"
     tasks = getattr(pet, "tasks", []) or []
-    busy = getattr(owner, "busy_times", []) or []
+
+    target = target_date or date.today()
+    if hasattr(owner, "active_busy_times"):
+        busy_pairs = owner.active_busy_times(target)
+    else:
+        busy_pairs = _coerce_busy_pairs(getattr(owner, "busy_times", []))
 
     return (
         f"Daily care schedule for a {age}-year-old {energy}-energy {species} named {name}. "
-        f"Owner busy {_format_busy_times(busy)}. "
+        f"Owner busy {_format_busy_times(busy_pairs)}. "
         f"Existing tasks: {_format_existing_tasks(tasks)}. "
         f"Health notes: {health}."
     )

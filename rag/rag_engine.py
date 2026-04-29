@@ -340,9 +340,14 @@ class RAGEngine:
 
         return None, "template"
 
-    def generate(self, owner, pet, k: int = 5) -> Recommendation:
-        """Run the full RAG pipeline for a single (owner, pet) pair."""
-        query = build_query(owner, pet)
+    def generate(self, owner, pet, k: int = 5, target_date=None) -> Recommendation:
+        """Run the full RAG pipeline for a single (owner, pet) pair.
+
+        ``target_date`` is the date the AI is planning for; defaults to today.
+        It's used to filter the owner's BusyBlocks down to those active on
+        that date when building the retrieval query.
+        """
+        query = build_query(owner, pet, target_date=target_date)
         hits = self.retriever.top_k(query, k=k) if self.store.count() > 0 else []
 
         llm_result, provider = self._try_llms(query, hits)

@@ -83,6 +83,47 @@ def test_conflict_detection_flags_same_time():
     assert "08:00" in conflicts[0]
 
 
+def test_conflict_pairs_returns_structured_info():
+    """conflict_pairs returns dicts with winner/loser tasks + the reason."""
+    owner = Owner("Jordan")
+    mochi = Pet(name="Mochi", species="dog", age=3)
+    luna  = Pet(name="Luna",  species="cat", age=5)
+    owner.add_pet(mochi)   # roster index 0 = wins by default
+    owner.add_pet(luna)    # roster index 1
+    mochi.add_task(make_task("Walk",    time="08:00"))
+    luna.add_task( make_task("Feeding", time="08:00"))
+
+    pairs = Scheduler(owner).conflict_pairs()
+    assert len(pairs) == 1
+    p = pairs[0]
+    assert p["time"] == "08:00"
+    assert p["winner_pet"] == "Mochi"
+    assert p["loser_pet"] == "Luna"
+    assert p["reason"] == "pet roster"
+
+
+def test_override_winner_flips_default_resolution():
+    """override_winner makes the loser-by-roster the new winner."""
+    owner = Owner("Jordan")
+    mochi = Pet(name="Mochi", species="dog", age=3)
+    luna  = Pet(name="Luna",  species="cat", age=5)
+    owner.add_pet(mochi)
+    owner.add_pet(luna)
+    mochi_walk = make_task("Walk",    time="08:00")
+    luna_feed  = make_task("Feeding", time="08:00")
+    mochi.add_task(mochi_walk)
+    luna.add_task(luna_feed)
+
+    sched = Scheduler(owner)
+    sched.override_winner("08:00", luna_feed)   # promote Luna's task
+
+    pairs = sched.conflict_pairs()
+    assert pairs[0]["winner_pet"] == "Luna"
+    assert pairs[0]["loser_pet"]  == "Mochi"
+    assert pairs[0]["reason"]     == "manual override"
+    assert luna_feed.priority_override > mochi_walk.priority_override
+
+
 def test_no_conflict_different_times():
     """Scheduler should not flag tasks at different times."""
     owner = Owner("Jordan")

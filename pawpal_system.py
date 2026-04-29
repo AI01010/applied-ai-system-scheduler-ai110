@@ -64,6 +64,10 @@ class Task:
     frequency: str = "once"          # "once" | "daily" | "weekly"
     completed: bool = False
     due_date: date = field(default_factory=date.today)
+    # Manual conflict-resolution boost. Higher beats lower at the same time
+    # slot, and the boost beats the default pet-roster ordering. 0 means
+    # "use the default rules."
+    priority_override: int = 0
 
     def mark_complete(self):
         """Mark this task done and advance due_date for recurring tasks."""
@@ -183,29 +187,76 @@ class Scheduler:
                 return pet.get_tasks()
         return []
 
-    def detect_conflicts(self) -> list[str]:
-        """Return warning strings for any two tasks at the same time, resolved by pet roster order."""
-        # pet_order maps pet name -> its index in owner.pets (lower = higher priority)
+    def conflict_pairs(self) -> list[dict]:
+        """Return structured conflict info for each same-time clash.
+
+        Each entry: ``{"time", "winner_task", "winner_pet", "loser_task",
+        "loser_pet", "reason"}``. ``reason`` is "manual override" when a
+        Task.priority_override settled the order, or "pet roster" when the
+        default ordering applied.
+        """
+        # pet_order: lower index = higher default priority
         pet_order = {pet.name: i for i, pet in enumerate(self.owner.pets)}
-        seen: dict[str, tuple] = {}   # time -> (task, pet_name)
-        warnings = []
+        seen: dict[str, tuple] = {}  # time -> (task, pet_name)
+        pairs: list[dict] = []
+
         for task, pet_name in self.get_tasks_with_pets():
-            if task.time in seen:
-                prev_task, prev_pet = seen[task.time]
-                if pet_order[pet_name] < pet_order[prev_pet]:
-                    winner, winner_pet = task, pet_name
-                    loser,  loser_pet  = prev_task, prev_pet
-                    seen[task.time] = (task, pet_name)
-                else:
-                    winner, winner_pet = prev_task, prev_pet
-                    loser,  loser_pet  = task, pet_name
-                warnings.append(
-                    f"Conflict at {task.time}: '{winner.title}' ({winner_pet}) takes priority "
-                    f"over '{loser.title}' ({loser_pet})"
-                )
-            else:
+            if task.time not in seen:
                 seen[task.time] = (task, pet_name)
-        return warnings
+                continue
+
+            prev_task, prev_pet = seen[task.time]
+
+            # Override beats roster. Higher override wins; ties fall through.
+            if task.priority_override != prev_task.priority_override:
+                if task.priority_override > prev_task.priority_override:
+                    winner_task, winner_pet, loser_task, loser_pet = task, pet_name, prev_task, prev_pet
+                else:
+                    winner_task, winner_pet, loser_task, loser_pet = prev_task, prev_pet, task, pet_name
+                reason = "manual override"
+            else:
+                # Default: pet roster order
+                if pet_order[pet_name] < pet_order[prev_pet]:
+                    winner_task, winner_pet, loser_task, loser_pet = task, pet_name, prev_task, prev_pet
+                else:
+                    winner_task, winner_pet, loser_task, loser_pet = prev_task, prev_pet, task, pet_name
+                reason = "pet roster"
+
+            seen[task.time] = (winner_task, winner_pet)
+            pairs.append({
+                "time":        task.time,
+                "winner_task": winner_task,
+                "winner_pet":  winner_pet,
+                "loser_task":  loser_task,
+                "loser_pet":   loser_pet,
+                "reason":      reason,
+            })
+        return pairs
+
+    def detect_conflicts(self) -> list[str]:
+        """Return human-readable warning strings for each detected conflict.
+
+        Wraps :meth:`conflict_pairs` to preserve the original API.
+        """
+        return [
+            f"Conflict at {p['time']}: '{p['winner_task'].title}' ({p['winner_pet']}) "
+            f"takes priority over '{p['loser_task'].title}' ({p['loser_pet']})"
+            for p in self.conflict_pairs()
+        ]
+
+    def override_winner(self, time: str, winner_task: Task) -> None:
+        """Make ``winner_task`` win every conflict at ``time``.
+
+        Sets ``winner_task.priority_override`` to one above the current max
+        among same-time tasks, and resets all other same-time tasks to 0.
+        """
+        same_time = [t for t, _ in self.get_tasks_with_pets() if t.time == time]
+        if winner_task not in same_time:
+            return
+        new_boost = max((t.priority_override for t in same_time), default=0) + 1
+        for t in same_time:
+            t.priority_override = 0
+        winner_task.priority_override = new_boost
 
     def get_tasks_with_pets(self) -> list[tuple]:
         """Return a list of (task, pet_name) sorted by task time."""

@@ -806,9 +806,27 @@ with tab_schedule:
                 st.progress(done / total if total else 0,
                             text=f"{done} / {total} tasks completed today")
 
-                # Conflict warnings
-                for c in scheduler.detect_conflicts():
-                    st.warning(c)
+                # Conflict warnings — with manual-override buttons per conflict
+                conflict_pairs = scheduler.conflict_pairs()
+                for idx, p in enumerate(conflict_pairs):
+                    wcol, bcol = st.columns([4, 1])
+                    with wcol:
+                        st.warning(
+                            f"Conflict at {_t(p['time'])}: "
+                            f"**{p['winner_task'].title}** ({p['winner_pet']}) "
+                            f"takes priority over **{p['loser_task'].title}** ({p['loser_pet']}) "
+                            f"— {p['reason']}"
+                        )
+                    with bcol:
+                        flip_label = f"Flip — make '{p['loser_task'].title}' win"
+                        if st.button(
+                            flip_label,
+                            key=f"flip_conflict_{idx}_{p['time']}",
+                            type="secondary",
+                            help="Override the default ordering for this time slot.",
+                        ):
+                            scheduler.override_winner(p["time"], p["loser_task"])
+                            st.rerun()
 
                 # Schedule table
                 if filtered:
@@ -870,6 +888,75 @@ with tab_schedule:
                     else:
                         st.info("No tasks to delete.")
 
+            # ── Edit a task ──────────────────────────────────────────────────
+            if all_task_pairs:
+                with st.expander("Edit a task"):
+                    chosen_edit = st.selectbox(
+                        "Pick a task to edit",
+                        [_label(t, pn) for t, pn in all_task_pairs],
+                        key="edit_sel",
+                    )
+                    edit_target = next(
+                        (t for t, pn in all_task_pairs if _label(t, pn) == chosen_edit),
+                        None,
+                    )
+                    if edit_target is not None:
+                        with st.form(f"edit_task_form_{id(edit_target)}"):
+                            ec1, ec2 = st.columns(2)
+                            with ec1:
+                                new_title = st.text_input(
+                                    "Title", value=edit_target.title, key="et_title",
+                                )
+                                new_time_raw = st.text_input(
+                                    "Time", value=_t(edit_target.time),
+                                    key="et_time",
+                                    placeholder="e.g. 08:00 or 8:00 AM",
+                                )
+                                new_duration = st.number_input(
+                                    "Duration (min)", min_value=1, max_value=240,
+                                    value=int(edit_target.duration_minutes), key="et_dur",
+                                )
+                            with ec2:
+                                new_priority = st.selectbox(
+                                    "Priority", ["low", "medium", "high"],
+                                    index=["low", "medium", "high"].index(edit_target.priority),
+                                    key="et_prio",
+                                )
+                                new_frequency = st.selectbox(
+                                    "Frequency", ["once", "daily", "weekly"],
+                                    index=["once", "daily", "weekly"].index(edit_target.frequency),
+                                    key="et_freq",
+                                )
+                                # Move to a different pet
+                                current_pet_name = next(
+                                    pn for t, pn in all_task_pairs if t is edit_target
+                                )
+                                new_pet_name = st.selectbox(
+                                    "Assigned pet",
+                                    [p.name for p in owner.pets],
+                                    index=[p.name for p in owner.pets].index(current_pet_name),
+                                    key="et_pet",
+                                )
+
+                            if st.form_submit_button("Save changes"):
+                                normalized = try_parse_time(new_time_raw)
+                                if not normalized:
+                                    st.error(f"Could not parse `{new_time_raw}` as a time.")
+                                else:
+                                    edit_target.title = new_title
+                                    edit_target.time = normalized
+                                    edit_target.duration_minutes = int(new_duration)
+                                    edit_target.priority = new_priority
+                                    edit_target.frequency = new_frequency
+                                    # If the pet changed, move the task
+                                    if new_pet_name != current_pet_name:
+                                        old_pet = next(p for p in owner.pets if p.name == current_pet_name)
+                                        new_pet = next(p for p in owner.pets if p.name == new_pet_name)
+                                        old_pet.remove_task(edit_target)
+                                        new_pet.add_task(edit_target)
+                                    st.success(f"Updated '{new_title}' on {new_pet_name}.")
+                                    st.rerun()
+
 
 # ─── TAB 3: AI RECOMMENDATIONS ───────────────────────────────────────────────
 with tab_ai:
@@ -923,7 +1010,7 @@ with tab_ai:
                         store.ingest_knowledge_base()
                         engine = RAGEngine(store=store)
                         pet_obj = next(p for p in owner.pets if p.name == target_pet_name)
-                        rec = engine.generate(owner, pet_obj, k=5)
+                        rec = engine.generate(owner, pet_obj, k=5, target_date=target_date)
                         result = apply_recommendation(
                             rec,
                             busy_times=owner.active_busy_times(target_date),
